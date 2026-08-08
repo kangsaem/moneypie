@@ -498,6 +498,9 @@ function addHolding(accId, name, group, amount, region){
 }
 function deleteHolding(accId, holdId){
   const acc = getAccount(accId);
+  const h = acc.holdings.find(x => x.id === holdId);
+  const name = h ? (isCashHolding(h) ? (h.region === 'overseas' ? '현금-해외' : '현금-국내') : h.name) : '이 종목';
+  if(!confirm(`"${name}"을(를) 삭제할까요?`)) return;
   acc.holdings = acc.holdings.filter(h => h.id !== holdId);
   save(); render();
 }
