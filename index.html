@@ -626,8 +626,8 @@ function legendHTML(data, type){
   return '<div class="legend">' + data.map((d,i) => {
     const rank = d.rank !== undefined ? d.rank : i;
     const rankCount = d.rankCount !== undefined ? d.rankCount : data.length;
-    const isCashLabel = d.label === '현금' || d.label === '현금-국내' || d.label === '현금-해외';
-    const cashStyle = isCashLabel ? 'color:#F0DA8C;font-weight:700;' : '';
+    const isCashLabel = d.label === '현금' || d.label === '현금-국내' || d.label === '현금-해외' || d.label === '국내현금' || d.label === '해외현금';
+    const cashStyle = isCashLabel ? 'color:#F0DA8C;font-weight:700;font-size:15px;' : '';
     return `<div class="legend-item"><span class="swatch" style="background:${rankColor(d.label, rank, rankCount, type)}"></span><span class="legend-name" style="${cashStyle}">${escapeHTML(d.label)}</span><span class="legend-pct num" style="${cashStyle}">${d.pct.toFixed(1)}<span class="pct-sign">%</span></span></div>`;
   }).join('') + '</div>';
 }
