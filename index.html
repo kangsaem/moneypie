@@ -56,6 +56,7 @@
     top:1px;
   }
   .tab.active{background:var(--surface2);border-color:var(--accent-dim);}
+  .tab-add.active{background:var(--surface2);border-color:var(--accent-dim);border-style:solid;color:var(--text);}
   .tab.total{color:var(--accent);}
   .tab-add{
     padding:10px 14px;
@@ -123,7 +124,9 @@
   <header>
     <div>
       <h1><span style="font-size:1.2em;display:inline-block;vertical-align:bottom;">머니파이</span> <span style="opacity:0.5;display:inline-block;vertical-align:bottom;">MONEY PIE</span></h1>
-      <p class="sub" style="font-size:10px;">계좌별로 종목/섹터/평가액을 입력하면 비중이 자동 계산됩니다.</p>
+      <p style="font-size:9px;color:var(--text-dim);line-height:1.5;margin:2px 0 0;max-width:480px;">
+        이 앱은 별도 서버 없이 사용 중인 기기의 브라우저 안에서만 작동하며, 어떤 데이터도 외부로 전송되지 않습니다. "데이터 저장하기"로 내보낸 파일을 가져오면 다른 기기에서도 이어서 쓸 수 있습니다. 다만 브라우저 캐시나 방문 기록을 삭제하면 데이터가 사라질 수 있으니, 주기적으로 데이터 저장하기로 백업해두세요.
+      </p>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
       <button class="btn" id="exportBtn">데이터 저장하기</button>
@@ -133,9 +136,7 @@
       <button class="btn btn-primary" id="snapshotBtn">이번달 자산 저장</button>
     </div>
   </header>
-  <p style="font-size:11px;color:var(--text-dim);line-height:1.6;margin:0 0 20px;">
-    이 앱은 별도 서버 없이 사용 중인 기기의 브라우저 안에서만 작동하며, 어떤 데이터도 외부로 전송되지 않습니다. "데이터 저장하기"로 내보낸 파일을 가져오면 다른 기기에서도 이어서 쓸 수 있습니다. 다만 브라우저 캐시나 방문 기록을 삭제하면 데이터가 사라질 수 있으니, 주기적으로 데이터 저장하기로 백업해두세요.
-  </p>
+  <p class="sub" style="font-size:10px;margin:0 0 20px;">계좌별로 종목/섹터/평가액을 입력하면 비중이 자동 계산됩니다.</p>
   <div id="tabs" class="tabs"></div>
   <div id="panel" class="panel"></div>
   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
@@ -822,7 +823,7 @@ function renderTabs(){
   html += `<div class="tab total ${state.activeId==='__overseas__'?'active':''}" data-tab="__overseas__">해외</div>`;
   html += `<div class="tab total ${state.activeId==='__total__'?'active':''}" data-tab="__total__">전체</div>`;
   html += `<div class="tab total ${state.activeId==='__history__'?'active':''}" data-tab="__history__">월별</div>`;
-  html += `<div class="tab-add ${state.activeId==='__snapshots__'?'active-dashed':''}" data-tab="__snapshots__">관리</div>`;
+  html += `<div class="tab-add ${state.activeId==='__snapshots__'?'active':''}" data-tab="__snapshots__">데이터 관리</div>`;
   html += `<div class="tab-add" id="addAccountBtn">+ 계좌 추가</div>`;
   html += `<div class="tab-add ${state.activeId==='__deleteAccounts__'?'active-dashed':''}" data-tab="__deleteAccounts__">계좌 삭제</div>`;
   tabs.innerHTML = html;
