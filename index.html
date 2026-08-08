@@ -814,7 +814,7 @@ function stackedBarSVG(data, width, height, type){
     const gx = (width*i/10).toFixed(1);
     grid += `<line x1="${gx}" y1="0" x2="${gx}" y2="${height}" stroke="rgba(255,255,255,0.28)" stroke-width="0.5"/>`;
   }
-  return `<svg width="100%" height="${height}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">${bars}${grid}</svg>`;
+  return `<svg width="100%" height="${height}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" style="display:block;border-radius:4px;overflow:hidden;">${bars}${grid}</svg>`;
 }
 
 function trendBarsHTML(snapshots, groupKey, type, title, compact){
@@ -954,7 +954,7 @@ function accountTypeBarChartBlock(){
   if(data.length === 0) return '';
   const legendHtml = data.map((d,i) => `<div class="legend-item" style="gap:5px;"><span class="swatch" style="background:${rankColor(d.label, i, data.length, 'accountType')}"></span><span class="legend-name">${escapeHTML(d.label)}</span><span class="legend-pct num" style="margin-left:2px;">${d.pct.toFixed(1)}<span class="pct-sign">%</span></span></div>`).join('');
   return `<div class="chart-box" style="grid-column:1/-1;max-width:800px;margin:0 auto;">
-    <div style="border-radius:4px;overflow:hidden;">${stackedBarSVG(data, 800, 22, 'accountType')}</div>
+    ${stackedBarSVG(data, 800, 22, 'accountType')}
     <div class="legend" style="flex-direction:row;flex-wrap:wrap;justify-content:center;gap:14px 20px;">${legendHtml}</div>
   </div>`;
 }
