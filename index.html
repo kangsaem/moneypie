@@ -955,7 +955,7 @@ function accountTypeBarChartBlock(){
   const legendHtml = data.map((d,i) => `<div class="legend-item"><span class="swatch" style="background:${rankColor(d.label, i, data.length, 'accountType')}"></span><span class="legend-name">${escapeHTML(d.label)}</span><span class="legend-pct num">${d.pct.toFixed(1)}<span class="pct-sign">%</span></span></div>`).join('');
   return `<div class="chart-box" style="grid-column:1/-1;max-width:800px;margin:0 auto;">
     ${stackedBarSVG(data, 800, 22, 'accountType')}
-    <div class="legend">${legendHtml}</div>
+    <div class="legend" style="flex-direction:row;flex-wrap:wrap;justify-content:center;gap:14px 20px;">${legendHtml}</div>
   </div>`;
 }
 
@@ -971,7 +971,7 @@ function creditGaugeChartBlock(){
   ];
   return `<div class="chart-box" style="grid-column:1/-1;max-width:800px;margin:0 auto;">
     ${creditBarSVG(gaugeData, 800, 22)}
-    <div class="legend">
+    <div class="legend" style="flex-direction:row;flex-wrap:wrap;justify-content:center;gap:14px 20px;">
       <div class="legend-item"><span class="swatch" style="background:${CREDIT_USED_COLOR}"></span><span class="legend-name">사용</span><span class="legend-pct num">${usedPct.toFixed(1)}<span class="pct-sign">%</span></span></div>
       <div class="legend-item"><span class="swatch" style="background:${CREDIT_REMAIN_COLOR}"></span><span class="legend-name">잔여한도</span><span class="legend-pct num">${remainPct.toFixed(1)}<span class="pct-sign">%</span></span></div>
     </div>
@@ -1119,7 +1119,7 @@ function renderPanel(){
     const byGroup = computeWeights(holdings, 'group');
     const total = _.sumBy(holdings, 'amount');
 
-    const subTabOptions = isDomestic ? ['전체', ...ACCOUNT_TYPES] : ['전체','직투','ETF'];
+    const subTabOptions = isDomestic ? ['전체', ...ACCOUNT_TYPES] : ['전체','직투','ETF/펀드'];
     const subTabsHtml = `
       <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin-bottom:18px;">
         ${subTabOptions.map(t => `<button class="btn${t===subType?' btn-primary':''}" data-subtype="${t}" style="padding:5px 12px;font-size:12px;">${t}</button>`).join('')}
@@ -1132,7 +1132,7 @@ function renderPanel(){
     ) : [];
 
     const byInvestType = (!isDomestic && subType === '전체') ? computeWeights(
-      _.flatMap(state.accounts, a => a.holdings.filter(h => h.region === 'overseas').map(h => ({ ...h, investTypeLabel: (a.accountType||'직투') === '직투' ? '직투' : 'ETF' }))),
+      _.flatMap(state.accounts, a => a.holdings.filter(h => h.region === 'overseas').map(h => ({ ...h, investTypeLabel: (a.accountType||'직투') === '직투' ? '직투' : 'ETF/펀드' }))),
       'investTypeLabel'
     ) : [];
 
