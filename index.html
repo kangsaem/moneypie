@@ -1145,7 +1145,7 @@ function renderPanel(){
       <div class="charts">
         ${chartBlock('종목별 비중', byStock, 'stock')}
         ${chartBlock('섹터별 비중', byGroup, 'group')}
-        ${isDomestic ? chartBlock('계좌유형 비중', byAccountType, 'accountType') : ''}
+        ${(isDomestic && subType === '전체') ? chartBlock('계좌유형 비중', byAccountType, 'accountType') : ''}
         ${(!isDomestic && subType === '전체') ? chartBlock('직투/ETF 비중', byInvestType, 'accountType') : ''}
       </div>
     `;
