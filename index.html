@@ -952,7 +952,7 @@ function accountTypeBarChartBlock(){
   const holdingsWithType = _.flatMap(state.accounts, a => a.holdings.map(h => ({ ...h, accountTypeLabel: a.accountType || '직투' })));
   const data = computeWeights(holdingsWithType, 'accountTypeLabel');
   if(data.length === 0) return '';
-  const legendHtml = data.map((d,i) => `<div class="legend-item"><span class="swatch" style="background:${rankColor(d.label, i, data.length, 'accountType')}"></span><span class="legend-name">${escapeHTML(d.label)}</span><span class="legend-pct num">${d.pct.toFixed(1)}<span class="pct-sign">%</span></span></div>`).join('');
+  const legendHtml = data.map((d,i) => `<div class="legend-item" style="gap:5px;"><span class="swatch" style="background:${rankColor(d.label, i, data.length, 'accountType')}"></span><span class="legend-name">${escapeHTML(d.label)}</span><span class="legend-pct num" style="margin-left:2px;">${d.pct.toFixed(1)}<span class="pct-sign">%</span></span></div>`).join('');
   return `<div class="chart-box" style="grid-column:1/-1;max-width:800px;margin:0 auto;">
     ${stackedBarSVG(data, 800, 22, 'accountType')}
     <div class="legend" style="flex-direction:row;flex-wrap:wrap;justify-content:center;gap:14px 20px;">${legendHtml}</div>
@@ -972,8 +972,8 @@ function creditGaugeChartBlock(){
   return `<div class="chart-box" style="grid-column:1/-1;max-width:800px;margin:0 auto;">
     ${creditBarSVG(gaugeData, 800, 22)}
     <div class="legend" style="flex-direction:row;flex-wrap:wrap;justify-content:center;gap:14px 20px;">
-      <div class="legend-item"><span class="swatch" style="background:${CREDIT_USED_COLOR}"></span><span class="legend-name">사용</span><span class="legend-pct num">${usedPct.toFixed(1)}<span class="pct-sign">%</span></span></div>
-      <div class="legend-item"><span class="swatch" style="background:${CREDIT_REMAIN_COLOR}"></span><span class="legend-name">잔여한도</span><span class="legend-pct num">${remainPct.toFixed(1)}<span class="pct-sign">%</span></span></div>
+      <div class="legend-item" style="gap:5px;"><span class="swatch" style="background:${CREDIT_USED_COLOR}"></span><span class="legend-name">사용</span><span class="legend-pct num" style="margin-left:2px;">${usedPct.toFixed(1)}<span class="pct-sign">%</span></span></div>
+      <div class="legend-item" style="gap:5px;"><span class="swatch" style="background:${CREDIT_REMAIN_COLOR}"></span><span class="legend-name">잔여한도</span><span class="legend-pct num" style="margin-left:2px;">${remainPct.toFixed(1)}<span class="pct-sign">%</span></span></div>
     </div>
   </div>`;
 }
