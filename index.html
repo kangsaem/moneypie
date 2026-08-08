@@ -948,6 +948,17 @@ function creditBarSVG(data, width, height){
   return `<svg width="100%" height="${height}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" style="display:block;border-radius:4px;overflow:hidden;">${bars}${grid}</svg>`;
 }
 
+function accountTypeBarChartBlock(){
+  const holdingsWithType = _.flatMap(state.accounts, a => a.holdings.map(h => ({ ...h, accountTypeLabel: a.accountType || '직투' })));
+  const data = computeWeights(holdingsWithType, 'accountTypeLabel');
+  if(data.length === 0) return '';
+  const legendHtml = data.map((d,i) => `<div class="legend-item"><span class="swatch" style="background:${rankColor(d.label, i, data.length, 'accountType')}"></span><span class="legend-name">${escapeHTML(d.label)}</span><span class="legend-pct num">${d.pct.toFixed(1)}<span class="pct-sign">%</span></span></div>`).join('');
+  return `<div class="chart-box" style="grid-column:1/-1;max-width:800px;margin:0 auto;">
+    ${stackedBarSVG(data, 800, 22, 'accountType')}
+    <div class="legend">${legendHtml}</div>
+  </div>`;
+}
+
 function creditGaugeChartBlock(){
   const totalLimit = _.sumBy(state.creditLines, 'limit');
   const totalUsed = _.sumBy(state.creditLines, 'used');
@@ -1167,6 +1178,7 @@ function renderPanel(){
         ${chartBlock('종목별 비중 (전체)', byStock, 'stock')}
         ${chartBlock('섹터별 비중 (전체)', byGroup, 'group')}
         ${chartBlock('국내/해외 비중', byRegion, 'region')}
+        ${accountTypeBarChartBlock()}
         ${state.creditLines.length > 0 ? creditGaugeChartBlock() : ''}
       </div>
     `;
