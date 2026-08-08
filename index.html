@@ -913,6 +913,22 @@ function creditGaugeSVG(data, size){
   return `<div class="donut-wrap"><svg width="100%" height="100%" viewBox="0 0 ${size} ${size}" style="display:block;"><g transform="translate(${size},0) scale(-1,1)">${paths}</g></svg></div>`;
 }
 
+function creditBarSVG(data, width, height){
+  const total = _.sumBy(data, 'amount') || 1;
+  let x = 0, bars = '';
+  data.forEach(d => {
+    const w = (d.amount/total) * width;
+    bars += `<rect x="${x.toFixed(1)}" y="0" width="${Math.max(w,0).toFixed(1)}" height="${height}" fill="${d.color}"><title>${escapeHTML(d.label)}</title></rect>`;
+    x += w;
+  });
+  let grid = '';
+  for(let i=1; i<10; i++){
+    const gx = (width*i/10).toFixed(1);
+    grid += `<line x1="${gx}" y1="0" x2="${gx}" y2="${height}" stroke="rgba(255,255,255,0.28)" stroke-width="0.5"/>`;
+  }
+  return `<svg width="100%" height="${height}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" style="display:block;border-radius:4px;overflow:hidden;">${bars}${grid}</svg>`;
+}
+
 function creditGaugeChartBlock(){
   const totalLimit = _.sumBy(state.creditLines, 'limit');
   const totalUsed = _.sumBy(state.creditLines, 'used');
@@ -923,8 +939,8 @@ function creditGaugeChartBlock(){
     { label:'사용', amount: totalUsed, color: CREDIT_USED_COLOR },
     { label:'잔여한도', amount: remain, color: CREDIT_REMAIN_COLOR }
   ];
-  return `<div class="chart-box">
-    ${creditGaugeSVG(gaugeData, 160)}
+  return `<div class="chart-box" style="max-width:320px;margin:0 auto;">
+    ${creditBarSVG(gaugeData, 300, 22)}
     <div class="legend">
       <div class="legend-item"><span class="swatch" style="background:${CREDIT_USED_COLOR}"></span><span class="legend-name">사용</span><span class="legend-pct num">${usedPct.toFixed(1)}<span class="pct-sign">%</span></span></div>
       <div class="legend-item"><span class="swatch" style="background:${CREDIT_REMAIN_COLOR}"></span><span class="legend-name">잔여한도</span><span class="legend-pct num">${remainPct.toFixed(1)}<span class="pct-sign">%</span></span></div>
