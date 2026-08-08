@@ -833,7 +833,7 @@ function renderTabs(){
   html += `<div class="tab total ${state.activeId==='__overseas__'?'active':''}" data-tab="__overseas__">해외</div>`;
   html += `<div class="tab total ${state.activeId==='__total__'?'active':''}" data-tab="__total__">전체</div>`;
   html += `<div class="tab total ${state.activeId==='__history__'?'active':''}" data-tab="__history__">월별</div>`;
-  html += `<div class="tab-add ${state.activeId==='__snapshots__'?'active':''}" data-tab="__snapshots__">데이터 관리</div>`;
+  html += `<div class="tab-add ${state.activeId==='__snapshots__'?'active':''}" data-tab="__snapshots__">관리</div>`;
   html += `<div class="tab-add" id="addAccountBtn">+ 계좌 추가</div>`;
   html += `<div class="tab-add ${state.activeId==='__deleteAccounts__'?'active-dashed':''}" data-tab="__deleteAccounts__">계좌 삭제</div>`;
   tabs.innerHTML = html;
@@ -1033,7 +1033,7 @@ function renderSnapshotsPanel(){
   }).join('');
 
   panel.innerHTML = `
-    <div class="account-header"><span class="total-badge">저장된 데이터 ${state.snapshots.length}개</span></div>
+    <div class="account-header"><span class="total-badge">저장된 월별 자산 ${state.snapshots.length}개</span></div>
     <div style="max-width:420px;">
       ${manageRows || '<div class="empty">저장된 데이터가 없습니다.</div>'}
     </div>
