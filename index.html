@@ -561,14 +561,14 @@ async function saveSnapshot(){
   render();
 }
 function deleteSnapshot(id){
-  if(!confirm('이 스냅샷을 삭제할까요?')) return;
+  if(!confirm('이 월별 자산을 삭제할까요?')) return;
   state.snapshots = state.snapshots.filter(s => s.id !== id);
   saveSnapshots(); render();
 }
 function loadSnapshotForEdit(id){
   const snap = state.snapshots.find(s => s.id === id);
   if(!snap) return;
-  if(!confirm(`"${snap.label}" 데이터를 현재 화면으로 불러올까요?\n지금 입력되어 있는 계좌 데이터는 이걸로 덮어써집니다.\n수정 후 "이번달 자산 저장"에서 같은 월(${snap.label})을 입력하면 이 스냅샷이 갱신됩니다.`)) return;
+  if(!confirm(`"${snap.label}" 데이터를 현재 화면으로 불러올까요?\n지금 입력되어 있는 계좌 데이터는 이걸로 덮어써집니다.\n수정 후 "이번달 자산 저장"에서 같은 월(${snap.label})을 입력하면 이 월별 자산이 갱신됩니다.`)) return;
   state.accounts = JSON.parse(JSON.stringify(snap.accounts));
   state.creditLines = JSON.parse(JSON.stringify(snap.creditLines || []));
   if(state.accounts.length === 0){
@@ -681,7 +681,7 @@ function holdingsTable(holdings, accId, editable, showRegion, alignMode, mergeDu
 }
 
 function lineChartSVG(points, extraSeries, width, height, labelMode){
-  if(points.length === 0) return '<div class="empty">저장된 스냅샷이 없습니다.</div>';
+  if(points.length === 0) return '<div class="empty">저장된 월별 자산이 없습니다.</div>';
   labelMode = labelMode || 'normal';
   const padX = 30, topPad = 66, bottomPad = 34;
   const maxVal = Math.max(...points.map(p=>p.value), 1);
@@ -1222,7 +1222,7 @@ document.getElementById('editModal').addEventListener('click', (e) => {
 });
 
 document.getElementById('resetBtn').addEventListener('click', async () => {
-  if(!confirm('모든 계좌, 종목, 스냅샷, 마통 데이터를 삭제할까요? 되돌릴 수 없습니다.')) return;
+  if(!confirm('모든 계좌, 종목, 월별 자산, 마통 데이터를 삭제할까요?? 되돌릴 수 없습니다.')) return;
   state.accounts = [{ id: uid(), name: '계좌 1', holdings: [] }];
   state.snapshots = [];
   state.creditLines = [];
