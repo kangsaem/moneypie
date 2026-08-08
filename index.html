@@ -939,8 +939,8 @@ function creditGaugeChartBlock(){
     { label:'사용', amount: totalUsed, color: CREDIT_USED_COLOR },
     { label:'잔여한도', amount: remain, color: CREDIT_REMAIN_COLOR }
   ];
-  return `<div class="chart-box" style="grid-column:1/-1;max-width:860px;margin:0 auto;">
-    ${creditBarSVG(gaugeData, 860, 22)}
+  return `<div class="chart-box" style="grid-column:1/-1;max-width:800px;margin:0 auto;">
+    ${creditBarSVG(gaugeData, 800, 22)}
     <div class="legend">
       <div class="legend-item"><span class="swatch" style="background:${CREDIT_USED_COLOR}"></span><span class="legend-name">사용</span><span class="legend-pct num">${usedPct.toFixed(1)}<span class="pct-sign">%</span></span></div>
       <div class="legend-item"><span class="swatch" style="background:${CREDIT_REMAIN_COLOR}"></span><span class="legend-name">잔여한도</span><span class="legend-pct num">${remainPct.toFixed(1)}<span class="pct-sign">%</span></span></div>
