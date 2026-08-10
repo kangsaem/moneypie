@@ -118,13 +118,14 @@
   .donut-wrap svg{filter:drop-shadow(7px 10px 10px rgba(0,0,0,0.16)) drop-shadow(3px 4px 4px rgba(0,0,0,0.1));}
   @media(max-width:640px){.donut-wrap{width:230px;height:230px;}}
   .mkt-card{
-    flex-shrink:0;min-width:108px;
+    flex-shrink:0;width:108px;
     background:var(--surface);border:1px solid var(--border);border-radius:8px;
     padding:8px 12px;
+    box-sizing:border-box;
   }
-  .mkt-name{font-size:11px;color:var(--text-dim);margin-bottom:2px;}
+  .mkt-name{font-size:9px;color:var(--text-dim);margin-bottom:2px;white-space:nowrap;}
   .mkt-value{font-size:14px;font-weight:700;}
-  .mkt-change{font-size:11px;font-weight:600;margin-left:4px;}
+  .mkt-change{font-size:10px;font-weight:600;}
   .mkt-refresh{background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:11px;flex-shrink:0;align-self:center;text-decoration:underline;}
   .chart-box h3{font-size:13px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin:0 0 12px;}
   .legend{display:flex;flex-direction:column;gap:6px;margin:12px auto 0;font-size:13px;width:fit-content;text-align:left;}
@@ -223,6 +224,24 @@ const MARKET_RANGE_CYCLE = ['1d','1mo','3mo','6mo','1y'];
 // 원자재/미국채/환율은 자체 거래시간이 24시간에 가까워 "정규장" 개념이 애매하므로,
 // 한국 증시 정규장(09:00~15:30 KST) 시간을 기준선으로 빌려와서 그린다.
 const KOREA_SESSION_KEYS = ['wti','gold','us10y','usdkrw'];
+const NAVER_INDEX_MAP = { kospi:'KOSPI', kosdaq:'KOSDAQ' };
+
+async function fetchNaverIndex(naverCode){
+  const targetUrl = `https://polling.finance.naver.com/api/realtime/domestic/index/${naverCode}`;
+  let res;
+  try{
+    res = await fetch(targetUrl);
+    if(!res.ok) throw new Error('direct fetch failed');
+  }catch(e){
+    res = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`);
+  }
+  const json = await res.json();
+  const row = json.datas && json.datas[0];
+  if(!row) return null;
+  const price = parseFloat(String(row.closePrice).replace(/,/g, ''));
+  const changePct = parseFloat(String(row.fluctuationsRatio).replace(/,/g, ''));
+  return { price, changePct };
+}
 function koreanMarketTimesForToday(){
   const kstMs = Date.now() + 9*60*60*1000;
   const kst = new Date(kstMs);
@@ -286,6 +305,9 @@ async function fetchYahooChart(symbol, range){
 function computePeriodChange(d, range){
   if(!d) return 0;
   if(range === '1d'){
+    if(d.naverChangePct !== undefined && d.naverChangePct !== null && !isNaN(d.naverChangePct)){
+      return d.naverChangePct;
+    }
     if(d.prevClose){
       return (d.price - d.prevClose) / d.prevClose * 100;
     }
@@ -373,8 +395,8 @@ function renderMarketTicker(){
 
     if(marketNotOpenYet){
       return `<div class="mkt-card" data-mktkey="${cfg.key}" style="cursor:pointer;" title="클릭하면 1일/1개월/3개월/6개월/12개월 그래프로 전환됩니다">
-        <div class="mkt-name">${cfg.name}</div>
-        <div><span class="mkt-value">${formatMarketValue(cfg.key, d.price)}</span><span class="mkt-change" style="color:var(--text-dim);">개장 전</span></div>
+        <div class="mkt-name">${cfg.name} <span class="mkt-change" style="color:var(--text-dim);">개장 전</span></div>
+        <div class="mkt-value">${formatMarketValue(cfg.key, d.price)}</div>
         <div style="font-size:9px;color:var(--text-dim);margin-top:1px;">${MARKET_RANGE_LABEL[range]}</div>
         <div style="height:24px;margin-top:4px;border-top:1px dashed var(--border);"></div>
       </div>`;
@@ -388,8 +410,8 @@ function renderMarketTicker(){
       ? sparklineIntradaySVG(d.intradayPoints, d.marketOpen, d.marketClose, 90, 24, baseline)
       : sparklineSVG(d.closes || [], 90, 24, baseline);
     return `<div class="mkt-card" data-mktkey="${cfg.key}" style="cursor:pointer;" title="클릭하면 1일/1개월/3개월/6개월/12개월 그래프로 전환됩니다">
-      <div class="mkt-name">${cfg.name}</div>
-      <div><span class="mkt-value">${formatMarketValue(cfg.key, d.price)}</span><span class="mkt-change" style="color:${changeColor};">${sign}${change.toFixed(2)}%</span></div>
+      <div class="mkt-name">${cfg.name} <span class="mkt-change" style="color:${changeColor};">${sign}${change.toFixed(2)}%</span></div>
+      <div class="mkt-value">${formatMarketValue(cfg.key, d.price)}</div>
       <div style="font-size:9px;color:var(--text-dim);margin-top:1px;">${MARKET_RANGE_LABEL[range]}</div>
       ${chart}
     </div>`;
@@ -421,6 +443,12 @@ async function cycleMarketRange(key){
       data.marketOpen = kr.open;
       data.marketClose = kr.close;
     }
+    if(nextRange === '1d' && NAVER_INDEX_MAP[key] && data){
+      try{
+        const naver = await fetchNaverIndex(NAVER_INDEX_MAP[key]);
+        if(naver){ data.price = naver.price; data.naverChangePct = naver.changePct; }
+      }catch(e){}
+    }
     marketFetchCache[cacheKey] = data;
     marketData[key] = data;
   }catch(e){}
@@ -450,6 +478,15 @@ async function loadMarketData(forceRefresh){
     dataMap[cfg.key] = value;
     marketRangeState[cfg.key] = '1d';
     marketFetchCache[cfg.key + '_1d'] = dataMap[cfg.key];
+  });
+  const naverResults = await Promise.allSettled(
+    Object.entries(NAVER_INDEX_MAP).map(([key, code]) => fetchNaverIndex(code).then(v => ({key, v})))
+  );
+  naverResults.forEach(r => {
+    if(r.status === 'fulfilled' && r.value.v && dataMap[r.value.key]){
+      dataMap[r.value.key].price = r.value.v.price;
+      dataMap[r.value.key].naverChangePct = r.value.v.changePct;
+    }
   });
   marketData = dataMap;
   renderMarketTicker();
@@ -550,7 +587,8 @@ function normalizeSnapshots(snapshots){
     label: normalizeLabel(s.label) || (s.label || ''),
     timestamp: s.timestamp || Date.now(),
     accounts: normalizeAccounts(s.accounts),
-    creditLines: normalizeCreditLines(s.creditLines)
+    creditLines: normalizeCreditLines(s.creditLines),
+    memo: s.memo || ''
   }));
 }
 
@@ -823,7 +861,8 @@ async function saveSnapshot(){
     label,
     timestamp: Date.now(),
     accounts: JSON.parse(JSON.stringify(state.accounts)),
-    creditLines: JSON.parse(JSON.stringify(state.creditLines))
+    creditLines: JSON.parse(JSON.stringify(state.creditLines)),
+    memo: existing ? (existing.memo || '') : ''
   };
   state.snapshots = state.snapshots.filter(s => s.label !== label);
   state.snapshots.push(snap);
@@ -1097,7 +1136,7 @@ function lineChartSVG(points, extraSeries, width, height, labelMode){
   const scaleY = v => height - bottomPad - ((v - minVal) / (maxVal - minVal || 1)) * (height - topPad - bottomPad);
   const coords = points.map((p,i) => [padX + i*xStep, scaleY(p.value)]);
   const linePath = coords.map((c,i)=> (i===0?'M':'L') + c[0].toFixed(1) + ',' + c[1].toFixed(1)).join(' ');
-  const dots = coords.map((c,i) => `<circle cx="${c[0].toFixed(1)}" cy="${c[1].toFixed(1)}" r="3.5" fill="#F0DA8C"/>`).join('');
+  const dots = coords.map((c,i) => `<circle cx="${c[0].toFixed(1)}" cy="${c[1].toFixed(1)}" r="11" fill="transparent" data-snap-idx="${i}" style="cursor:pointer;"/><circle cx="${c[0].toFixed(1)}" cy="${c[1].toFixed(1)}" r="3.5" fill="#F0DA8C" style="pointer-events:none;"/>`).join('');
 
   const rawValues = points.map(p=>p.value);
   const lastIdx = points.length - 1;
@@ -1205,7 +1244,65 @@ function stackedBarSVG(data, width, height, type){
   return `<svg width="100%" height="${height}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" style="display:block;border-radius:4px;overflow:hidden;">${bars}${grid}</svg>`;
 }
 
-function trendBarsHTML(snapshots, groupKey, type, title, compact){
+let openTotalMemoId = null;
+
+function toggleTotalMemoAccordion(snapId){
+  const slot = document.getElementById('total-memo-slot');
+  if(!slot) return;
+  if(openTotalMemoId === snapId){
+    slot.innerHTML = '';
+    openTotalMemoId = null;
+    return;
+  }
+  const snap = state.snapshots.find(s => s.id === snapId);
+  const memoText = snap ? (snap.memo || '') : '';
+  const monthLabel = snap ? fullMonthLabel(snap.label) : '';
+  slot.innerHTML = `<div style="background:var(--surface);border-radius:6px;padding:8px 12px;text-align:left;box-sizing:border-box;max-width:280px;margin:0 auto 10px;box-shadow:0 4px 12px rgba(0,0,0,0.4);">
+    <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">${escapeHTML(monthLabel)} 메모</div>
+    <textarea id="total-memo-textarea" placeholder="메모를 입력하세요" style="width:100%;box-sizing:border-box;min-height:60px;background:var(--bg);color:#EDEDED;border:1px solid var(--border);border-radius:4px;padding:6px;font-size:12px;font-family:inherit;resize:vertical;">${escapeHTML(memoText)}</textarea>
+    <div style="text-align:right;margin-top:6px;">
+      <button class="btn btn-primary" id="total-memo-save" style="padding:4px 10px;font-size:12px;">메모저장</button>
+    </div>
+  </div>`;
+  openTotalMemoId = snapId;
+  document.getElementById('total-memo-save').addEventListener('click', () => {
+    if(snap) snap.memo = document.getElementById('total-memo-textarea').value;
+    saveSnapshots();
+    slot.innerHTML = '';
+    openTotalMemoId = null;
+  });
+}
+
+let trendRowData = {};
+let openTrendRowId = null;
+
+function bindTrendAccordionHandlers(){
+  document.querySelectorAll('[data-trendrow]').forEach(el => {
+    el.addEventListener('click', () => toggleTrendAccordion(el.dataset.trendrow));
+  });
+}
+
+function toggleTrendAccordion(rowId){
+  const slot = document.getElementById('trend-slot-' + rowId);
+  if(!slot) return;
+  if(openTrendRowId === rowId){
+    slot.innerHTML = '';
+    openTrendRowId = null;
+    return;
+  }
+  if(openTrendRowId){
+    const prev = document.getElementById('trend-slot-' + openTrendRowId);
+    if(prev) prev.innerHTML = '';
+  }
+  const data = trendRowData[rowId] || [];
+  const rows = data.map(d => accordionRowHTML(d.label, d.pct)).join('');
+  slot.innerHTML = `<div style="background:var(--surface);border-radius:6px;padding:8px 12px;text-align:left;box-sizing:border-box;width:240px;position:absolute;bottom:100%;left:50%;transform:translateX(-50%);margin-bottom:4px;z-index:5;box-shadow:0 4px 12px rgba(0,0,0,0.4);">
+    ${rows || '<div class="empty">데이터 없음</div>'}
+  </div>`;
+  openTrendRowId = rowId;
+}
+
+function trendBarsHTML(snapshots, groupKey, type, title, compact, idPrefix){
   if(snapshots.length === 0) return '';
   const barHeight = compact ? 7 : 13;
   const rowGap = compact ? 1 : 3;
@@ -1216,9 +1313,14 @@ function trendBarsHTML(snapshots, groupKey, type, title, compact){
     const byKey = reorderCashFirst(byKeyRaw);
     const showLabel = !compact || i === 0 || i === ordered.length - 1;
     const labelText = showLabel ? escapeHTML(shortMonthLabel(s.label)) : '';
-    return `<div style="display:flex;align-items:center;gap:12px;margin-bottom:${rowGap}px;height:${barHeight}px;line-height:${barHeight}px;">
-      <span style="width:40px;color:var(--text-dim);font-size:${compact?10:12}px;flex-shrink:0;overflow:visible;" class="num">${labelText}</span>
-      <div style="flex:1;height:${barHeight}px;border-radius:3px;overflow:hidden;">${stackedBarSVG(byKey, 600, barHeight, type)}</div>
+    const rowId = `${idPrefix}-${i}`;
+    trendRowData[rowId] = byKey;
+    return `<div style="position:relative;">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:${rowGap}px;height:${barHeight}px;line-height:${barHeight}px;cursor:pointer;" data-trendrow="${rowId}">
+        <span style="width:40px;color:var(--text-dim);font-size:${compact?10:12}px;flex-shrink:0;overflow:visible;" class="num">${labelText}</span>
+        <div style="flex:1;height:${barHeight}px;border-radius:3px;overflow:hidden;">${stackedBarSVG(byKey, 600, barHeight, type)}</div>
+      </div>
+      <div id="trend-slot-${rowId}"></div>
     </div>`;
   }).join('');
 
@@ -1292,15 +1394,23 @@ function renderHistoryPanel(){
 
   panel.innerHTML = `
     ${rangeSelector}
+    <div id="total-memo-slot"></div>
     <div class="trend-wrap">${lineChartSVG(points, lineSeries, 860, 205, range === '24' ? 'shrink' : (range === 'all' ? 'sparse' : 'normal'))}</div>
-    ${trendBarsHTML(filtered, 'name', 'stock', '종목', range === 'all')}
-    ${trendBarsHTML(filtered, 'group', 'group', '섹터', range === 'all')}
-    ${trendBarsHTML(filtered, regionLabelFor, 'region', '국내/해외', range === 'all')}
+    ${trendBarsHTML(filtered, 'name', 'stock', '종목', range === 'all', 'stock')}
+    ${trendBarsHTML(filtered, 'group', 'group', '섹터', range === 'all', 'group')}
+    ${trendBarsHTML(filtered, regionLabelFor, 'region', '국내/해외', range === 'all', 'region')}
   `;
   document.getElementById('rangeSelect').addEventListener('change', (e) => {
     state.historyRange = e.target.value;
     render();
   });
+  document.querySelectorAll('[data-snap-idx]').forEach(el => {
+    el.addEventListener('click', () => {
+      const snap = filtered[parseInt(el.dataset.snapIdx, 10)];
+      if(snap) toggleTotalMemoAccordion(snap.id);
+    });
+  });
+  bindTrendAccordionHandlers();
 }
 
 function creditGaugeSVG(data, size){
@@ -1443,15 +1553,57 @@ function renderDeleteAccountsPanel(){
   if(resetBtn) resetBtn.addEventListener('click', handleResetAllData);
 }
 
+let openMemoSnapId = null;
+
+function toggleMemoAccordion(snapId){
+  const slot = document.getElementById('snap-memo-slot-' + snapId);
+  if(!slot) return;
+  if(openMemoSnapId && openMemoSnapId !== snapId){
+    const prevSlot = document.getElementById('snap-memo-slot-' + openMemoSnapId);
+    if(prevSlot) prevSlot.innerHTML = '';
+  }
+  if(openMemoSnapId === snapId){
+    slot.innerHTML = '';
+    openMemoSnapId = null;
+    return;
+  }
+  const snap = state.snapshots.find(s => s.id === snapId);
+  const memoText = snap ? (snap.memo || '') : '';
+  slot.innerHTML = `<div style="background:var(--surface);border-radius:6px;padding:8px 12px;text-align:left;box-sizing:border-box;width:240px;position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:4px;z-index:5;box-shadow:0 4px 12px rgba(0,0,0,0.4);">
+    <textarea id="memo-textarea-${snapId}" placeholder="메모를 입력하세요" style="width:100%;box-sizing:border-box;min-height:60px;background:var(--bg);color:#EDEDED;border:1px solid var(--border);border-radius:4px;padding:6px;font-size:12px;font-family:inherit;resize:vertical;">${escapeHTML(memoText)}</textarea>
+    <div style="text-align:right;margin-top:6px;">
+      <button class="btn btn-primary" data-savememo="${snapId}" style="padding:4px 10px;font-size:12px;">메모저장</button>
+    </div>
+  </div>`;
+  openMemoSnapId = snapId;
+  const saveBtn = slot.querySelector('[data-savememo]');
+  if(saveBtn) saveBtn.addEventListener('click', () => saveSnapshotMemo(snapId));
+}
+
+function saveSnapshotMemo(snapId){
+  const snap = state.snapshots.find(s => s.id === snapId);
+  if(!snap) return;
+  const ta = document.getElementById('memo-textarea-' + snapId);
+  snap.memo = ta ? ta.value : '';
+  saveSnapshots();
+  const slot = document.getElementById('snap-memo-slot-' + snapId);
+  if(slot) slot.innerHTML = '';
+  openMemoSnapId = null;
+}
+
 function renderSnapshotsPanel(){
   const panel = document.getElementById('panel');
   const manageRows = state.snapshots.slice().reverse().map(s => {
     const total = _.sumBy(_.flatMap(s.accounts, a => a.holdings), 'amount');
-    return `<div style="display:flex;justify-content:space-between;align-items:center;gap:16px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;">
-      <span class="num" style="color:var(--text-dim);">${escapeHTML(fullMonthLabel(s.label))}</span>
-      <span class="num" style="color:var(--text-dim);flex:1;text-align:right;">${total.toLocaleString()}원</span>
-      <button class="del" data-editsnap="${s.id}">수정</button>
-      <button class="del" data-delsnap="${s.id}">삭제</button>
+    return `<div style="position:relative;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;">
+        <span class="num" style="color:var(--text-dim);">${escapeHTML(fullMonthLabel(s.label))}</span>
+        <span class="num" style="color:var(--text-dim);flex:1;text-align:right;">${total.toLocaleString()}원</span>
+        <button class="del" data-memosnap="${s.id}">메모</button>
+        <button class="del" data-editsnap="${s.id}">수정</button>
+        <button class="del" data-delsnap="${s.id}">삭제</button>
+      </div>
+      <div id="snap-memo-slot-${s.id}"></div>
     </div>`;
   }).join('');
 
@@ -1466,6 +1618,9 @@ function renderSnapshotsPanel(){
   });
   panel.querySelectorAll('[data-editsnap]').forEach(btn => {
     btn.addEventListener('click', () => loadSnapshotForEdit(btn.dataset.editsnap));
+  });
+  panel.querySelectorAll('[data-memosnap]').forEach(btn => {
+    btn.addEventListener('click', () => toggleMemoAccordion(btn.dataset.memosnap));
   });
 }
 
