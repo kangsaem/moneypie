@@ -229,13 +229,19 @@ const NAVER_INDEX_MAP = { kospi:'KOSPI', kosdaq:'KOSDAQ' };
 
 async function fetchNaverIndex(naverCode){
   const targetUrl = `https://polling.finance.naver.com/api/realtime/domestic/index/${naverCode}?_=${Date.now()}`;
-  let res;
-  try{
-    res = await fetch(targetUrl, { cache: 'no-store' });
-    if(!res.ok) throw new Error('direct fetch failed');
-  }catch(e){
-    res = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`, { cache: 'no-store' });
+  const attempts = [
+    () => fetch(targetUrl, { cache: 'no-store' }),
+    () => fetch(`https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`, { cache: 'no-store' }),
+    () => fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`, { cache: 'no-store' })
+  ];
+  let res = null;
+  for(const attempt of attempts){
+    try{
+      res = await attempt();
+      if(res && res.ok) break;
+    }catch(e){ res = null; }
   }
+  if(!res) return null;
   const json = await res.json();
   const row = json.datas && json.datas[0];
   if(!row) return null;
@@ -382,10 +388,6 @@ function formatMarketValue(key, price){
   return price.toLocaleString(undefined, {maximumFractionDigits:2});
 }
 
-function periodTabsHtml(key, range){
-  return MARKET_RANGE_CYCLE.map(r => `<span data-mktkey="${key}" data-setrange="${r}" style="cursor:pointer;font-size:8px;padding:0 1.5px;${r===range?'color:#EDEDED;font-weight:700;':'color:var(--text-dim);'}">${MARKET_RANGE_LABEL[r]}</span>`).join('');
-}
-
 function renderMarketTicker(){
   const el = document.getElementById('marketTicker');
   if(!el) return;
@@ -400,7 +402,7 @@ function renderMarketTicker(){
 
     if(marketNotOpenYet){
       return `<div class="mkt-card" data-mktkey="${cfg.key}">
-        <div class="mkt-name">${cfg.name}<br>${periodTabsHtml(cfg.key, range)}</div>
+        <div class="mkt-name" style="display:flex;justify-content:space-between;align-items:baseline;"><span>${cfg.name}</span><span style="color:var(--text-dim);">${MARKET_RANGE_LABEL[range]}</span></div>
         <div class="mkt-change" style="color:var(--text-dim);">개장 전</div>
         <div class="mkt-value">${formatMarketValue(cfg.key, d.price)}</div>
         <div style="height:24px;margin-top:4px;border-top:1px dashed var(--border);"></div>
@@ -415,7 +417,7 @@ function renderMarketTicker(){
       ? sparklineIntradaySVG(d.intradayPoints, d.marketOpen, d.marketClose, 90, 24, baseline)
       : sparklineSVG(d.closes || [], 90, 24, baseline);
     return `<div class="mkt-card" data-mktkey="${cfg.key}">
-      <div class="mkt-name">${cfg.name}<br>${periodTabsHtml(cfg.key, range)}</div>
+      <div class="mkt-name" style="display:flex;justify-content:space-between;align-items:baseline;"><span>${cfg.name}</span><span style="color:var(--text-dim);">${MARKET_RANGE_LABEL[range]}</span></div>
       <div class="mkt-change" style="color:${changeColor};">${sign}${change.toFixed(2)}%</div>
       <div class="mkt-value">${formatMarketValue(cfg.key, d.price)}</div>
       ${chart}
@@ -424,12 +426,6 @@ function renderMarketTicker(){
   el.innerHTML = cards;
   el.querySelectorAll('.mkt-card[data-mktkey]').forEach(card => {
     card.addEventListener('click', () => cycleMarketRange(card.dataset.mktkey));
-  });
-  el.querySelectorAll('[data-setrange]').forEach(span => {
-    span.addEventListener('click', (e) => {
-      e.stopPropagation();
-      setMarketRange(span.dataset.mktkey, span.dataset.setrange);
-    });
   });
 }
 
@@ -1036,7 +1032,7 @@ function bindSectorAccordionHandlers(){
       const holdings = sectorAccordionHoldings.filter(h => h.group === label);
       const breakdown = reorderCashFirst(computeWeights(holdings, 'name'));
       const rows = breakdown.map(d => accordionRowHTML(d.label, d.pct)).join('');
-      slot.innerHTML = `<div style="background:#EDEDED;color:#333333;border-radius:6px;padding:8px 12px;text-align:left;box-sizing:border-box;width:240px;position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:4px;z-index:5;box-shadow:0 4px 12px rgba(0,0,0,0.4);">
+      slot.innerHTML = `<div class="floating-acc" style="background:#EDEDED;color:#333333;border-radius:6px;padding:8px 12px;text-align:left;box-sizing:border-box;width:240px;position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:4px;z-index:5;box-shadow:0 4px 12px rgba(0,0,0,0.4);">
         ${rows || '<div class="empty">데이터 없음</div>'}
       </div>`;
       sectorAccordionOpenIdx = idx;
@@ -1094,7 +1090,7 @@ function bindRegionAccordionHandlers(){
         breakdown = reorderCashFirst(computeWeights(holdings, 'group'));
       }
       const rows = breakdown.map(d => accordionRowHTML(d.label, d.pct)).join('');
-      slot.innerHTML = `<div style="background:#EDEDED;color:#333333;border-radius:6px;padding:8px 12px;text-align:left;box-sizing:border-box;width:240px;position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:4px;z-index:5;box-shadow:0 4px 12px rgba(0,0,0,0.4);">
+      slot.innerHTML = `<div class="floating-acc" style="background:#EDEDED;color:#333333;border-radius:6px;padding:8px 12px;text-align:left;box-sizing:border-box;width:240px;position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:4px;z-index:5;box-shadow:0 4px 12px rgba(0,0,0,0.4);">
         ${rows || '<div class="empty">데이터 없음</div>'}
       </div>`;
       regionAccordionOpenIdx = idx;
@@ -1295,7 +1291,7 @@ function renderTotalMemoBox(snapId){
       <button class="btn btn-primary" id="total-memo-edit" style="padding:4px 10px;font-size:12px;">메모수정</button>
     </div>`;
   }
-  slot.innerHTML = `<div style="background:#EDEDED;color:#333333;border-radius:6px;padding:8px 12px;text-align:left;box-sizing:border-box;max-width:280px;margin:0 auto 10px;box-shadow:0 4px 12px rgba(0,0,0,0.4);">
+  slot.innerHTML = `<div class="floating-acc" style="background:#EDEDED;color:#333333;border-radius:8px;padding:12px 16px;text-align:left;box-sizing:border-box;width:260px;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:20;box-shadow:0 8px 24px rgba(0,0,0,0.5);">
     <div style="font-size:11px;color:#555555;margin-bottom:4px;">${escapeHTML(monthLabel)} 메모</div>
     ${inner}
   </div>`;
@@ -1434,8 +1430,10 @@ function renderHistoryPanel(){
 
   panel.innerHTML = `
     ${rangeSelector}
-    <div id="total-memo-slot"></div>
-    <div class="trend-wrap">${lineChartSVG(points, lineSeries, 860, 205, range === '24' ? 'shrink' : (range === 'all' ? 'sparse' : 'normal'))}</div>
+    <div style="position:relative;">
+      <div id="total-memo-slot"></div>
+      <div class="trend-wrap">${lineChartSVG(points, lineSeries, 860, 205, range === '24' ? 'shrink' : (range === 'all' ? 'sparse' : 'normal'))}</div>
+    </div>
     ${trendBarsHTML(filtered, 'name', 'stock', '종목', range === 'all', 'stock')}
     ${trendBarsHTML(filtered, 'group', 'group', '섹터', range === 'all', 'group')}
     ${trendBarsHTML(filtered, regionLabelFor, 'region', '국내/해외', range === 'all', 'region')}
@@ -1632,7 +1630,7 @@ function renderMemoBox(snapId){
       <button class="btn btn-primary" data-editmemo="${snapId}" style="padding:4px 10px;font-size:12px;">메모수정</button>
     </div>`;
   }
-  slot.innerHTML = `<div style="background:#EDEDED;color:#333333;border-radius:6px;padding:8px 12px;text-align:left;box-sizing:border-box;width:240px;position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:4px;z-index:5;box-shadow:0 4px 12px rgba(0,0,0,0.4);">${inner}</div>`;
+  slot.innerHTML = `<div class="floating-acc" style="background:#EDEDED;color:#333333;border-radius:6px;padding:8px 12px;text-align:left;box-sizing:border-box;width:240px;position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:4px;z-index:5;box-shadow:0 4px 12px rgba(0,0,0,0.4);">${inner}</div>`;
   const saveBtn = slot.querySelector('[data-savememo]');
   if(saveBtn) saveBtn.addEventListener('click', () => saveSnapshotMemo(snapId));
   const editBtn = slot.querySelector('[data-editmemo]');
@@ -1882,6 +1880,32 @@ document.getElementById('importFile').addEventListener('change', (e) => {
   const file = e.target.files[0];
   if(file) importData(file);
   e.target.value = '';
+});
+
+document.addEventListener('click', (e) => {
+  const isTrigger = e.target.closest('[data-sector-idx],[data-region-idx],[data-memosnap],[data-editmemo],[data-savememo],[data-snap-idx],#total-memo-edit,#total-memo-save');
+  const isInsideAccordion = e.target.closest('.floating-acc');
+  if(isTrigger || isInsideAccordion) return;
+  if(sectorAccordionOpenIdx !== null){
+    const s = document.getElementById('sector-slot-' + sectorAccordionOpenIdx);
+    if(s) s.innerHTML = '';
+    sectorAccordionOpenIdx = null;
+  }
+  if(regionAccordionOpenIdx !== null){
+    const s = document.getElementById('region-slot-' + regionAccordionOpenIdx);
+    if(s) s.innerHTML = '';
+    regionAccordionOpenIdx = null;
+  }
+  if(openMemoSnapId){
+    const s = document.getElementById('snap-memo-slot-' + openMemoSnapId);
+    if(s) s.innerHTML = '';
+    openMemoSnapId = null;
+  }
+  if(openTotalMemoId){
+    const s = document.getElementById('total-memo-slot');
+    if(s) s.innerHTML = '';
+    openTotalMemoId = null;
+  }
 });
 
 document.getElementById('mktRefreshBtn').addEventListener('click', () => loadMarketData(true));
