@@ -229,8 +229,8 @@ const KOREA_SESSION_KEYS = ['wti','gold','us10y','usdkrw'];
 const KR_OVERRIDE_KEYS = ['wti','gold','us10y','usdkrw'];
 // 미국 지수(S&P500/나스닥)도 야후 무료 데이터가 약 15분 지연되는 것으로 알려져 있어,
 // 그래프 우측 끝(장마감) 기준에 지연시간만큼 버퍼를 더해준다.
-const US_DELAY_BUFFER_KEYS = ['sp500','nasdaq'];
-const US_DELAY_BUFFER_SEC = 15 * 60;
+// 야후 자체 장마감 시각(정확함)은 그대로 두고, 시세 지연시간만큼만 그래프 우측 끝에 여유를 더해준다
+const DELAY_BUFFER_SEC_BY_KEY = { kospi: 20*60, kosdaq: 20*60, sp500: 15*60, nasdaq: 15*60 };
 const NAVER_INDEX_MAP = { kospi:'KOSPI', kosdaq:'KOSDAQ' };
 
 function fetchWithTimeout(url, opts, ms){
@@ -431,8 +431,8 @@ function renderMarketTicker(){
       d.marketOpen = kr.open;
       d.marketClose = kr.close;
     }
-    if(range === '1d' && US_DELAY_BUFFER_KEYS.includes(cfg.key) && d.marketClose && !d._delayBuffered){
-      d.marketClose += US_DELAY_BUFFER_SEC;
+    if(range === '1d' && DELAY_BUFFER_SEC_BY_KEY[cfg.key] && d.marketClose && !d._delayBuffered){
+      d.marketClose += DELAY_BUFFER_SEC_BY_KEY[cfg.key];
       d._delayBuffered = true;
     }
     const baseline = range === '1d' ? d.prevClose : ((d.closes && d.closes[0]) || undefined);
