@@ -41,6 +41,7 @@
   .btn:hover{border-color:var(--accent-dim);color:var(--text);}
   .btn-danger:hover{border-color:#8c4a4a;color:#c97a7a;}
   .btn-primary{background:var(--accent);color:#111;border-color:var(--accent);}
+  .btn-memo{background:var(--accent);color:#111;border:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;}
   .btn-primary:hover{background:#fff;border-color:#fff;color:#111;}
   .tabs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:0;align-items:flex-end;}
   .tab{
@@ -1652,7 +1653,7 @@ function renderSnapshotsPanel(){
         <span class="num" style="color:var(--text-dim);flex-shrink:0;">${escapeHTML(shortMonthLabel(s.label))}</span>
         <span class="num" style="color:var(--text-dim);flex:1;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${total.toLocaleString()}원</span>
         <div style="display:flex;gap:4px;flex-shrink:0;">
-          <button class="del" data-memosnap="${s.id}">메모</button>
+          <button class="btn-memo" data-memosnap="${s.id}">메모</button>
           <button class="del" data-editsnap="${s.id}">수정</button>
           <button class="del" data-delsnap="${s.id}">삭제</button>
         </div>
@@ -1770,11 +1771,14 @@ function renderPanel(){
 
     const byRegion = computeWeights(allHoldings, regionLabelFor);
     const totalCreditUsed = _.sumBy(state.creditLines, 'used');
+    const currentLabel = currentMonthLabel();
+    const thisMonthSnap = state.snapshots.find(s => s.label === currentLabel) || (state.snapshots.length ? state.snapshots[state.snapshots.length-1] : null);
 
     panel.innerHTML = `
       <div class="account-header" style="justify-content:center;flex-direction:column;gap:4px;">
         <span class="total-badge">평가액<span class="num">${grandTotal.toLocaleString()}원</span></span>
         ${totalCreditUsed > 0 ? `<span class="total-badge">마통사용<span class="num" style="color:${CREDIT_USED_COLOR};">${totalCreditUsed.toLocaleString()}원</span></span>` : ''}
+        ${thisMonthSnap ? `<div style="position:relative;"><button class="btn-memo" data-memosnap="${thisMonthSnap.id}">메모</button><div id="snap-memo-slot-${thisMonthSnap.id}"></div></div>` : ''}
       </div>
       <div style="max-width:520px;margin:0 auto;overflow-x:auto;">${holdingsTable(allHoldings, null, false, true, true, true)}</div>
       <div class="charts">
@@ -1787,6 +1791,9 @@ function renderPanel(){
     `;
     bindSectorAccordionHandlers();
     bindRegionAccordionHandlers();
+    panel.querySelectorAll('[data-memosnap]').forEach(btn => {
+      btn.addEventListener('click', () => toggleMemoAccordion(btn.dataset.memosnap));
+    });
     return;
   }
 
