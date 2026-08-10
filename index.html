@@ -229,8 +229,6 @@ const KOREA_SESSION_KEYS = ['wti','gold','us10y','usdkrw'];
 const KR_OVERRIDE_KEYS = ['wti','gold','us10y','usdkrw'];
 // 미국 지수(S&P500/나스닥)도 야후 무료 데이터가 약 15분 지연되는 것으로 알려져 있어,
 // 그래프 우측 끝(장마감) 기준에 지연시간만큼 버퍼를 더해준다.
-// 야후 자체 장마감 시각(정확함)은 그대로 두고, 시세 지연시간만큼만 그래프 우측 끝에 여유를 더해준다
-const DELAY_BUFFER_SEC_BY_KEY = { kospi: 20*60, kosdaq: 20*60, sp500: 15*60, nasdaq: 15*60 };
 const NAVER_INDEX_MAP = { kospi:'KOSPI', kosdaq:'KOSDAQ' };
 
 function fetchWithTimeout(url, opts, ms){
@@ -266,9 +264,7 @@ function koreanMarketTimesForToday(){
   const kst = new Date(kstMs);
   const y = kst.getUTCFullYear(), m = kst.getUTCMonth(), d = kst.getUTCDate();
   const openMs = Date.UTC(y, m, d, 0, 0, 0);   // 09:00 KST = 00:00 UTC
-  // 시세가 약 20분 지연되어 오므로, 그래프 우측 끝은 실제 장마감(15:30)이 아니라
-  // 지연시간을 더한 15:50 기준으로 잡아야 실제 장마감 시점에 정확히 끝까지 도달한다.
-  const closeMs = Date.UTC(y, m, d, 6, 50, 0); // 15:50 KST = 06:50 UTC
+  const closeMs = Date.UTC(y, m, d, 6, 30, 0); // 15:30 KST = 06:30 UTC
   return { open: openMs/1000, close: closeMs/1000 };
 }
 const MARKET_RANGE_LABEL = { '1d':'1일', '1mo':'1개월', '3mo':'3개월', '6mo':'6개월', '1y':'12개월' };
@@ -441,10 +437,6 @@ function renderMarketTicker(){
       const kr = koreanMarketTimesForToday();
       d.marketOpen = kr.open;
       d.marketClose = kr.close;
-    }
-    if(range === '1d' && DELAY_BUFFER_SEC_BY_KEY[cfg.key] && d.marketClose && !d._delayBuffered){
-      d.marketClose += DELAY_BUFFER_SEC_BY_KEY[cfg.key];
-      d._delayBuffered = true;
     }
     const baseline = range === '1d' ? d.prevClose : ((d.closes && d.closes[0]) || undefined);
     const chart = (range === '1d' && d.intradayPoints)
