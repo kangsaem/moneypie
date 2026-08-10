@@ -226,7 +226,7 @@ const MARKET_RANGE_CYCLE = ['1d','1mo','3mo','6mo','1y'];
 // 원자재/미국채/환율은 자체 거래시간이 24시간에 가까워 "정규장" 개념이 애매하므로,
 // 한국 증시 정규장(09:00~15:30 KST) 시간을 기준선으로 빌려와서 그린다.
 const KOREA_SESSION_KEYS = ['wti','gold','us10y','usdkrw'];
-const KR_OVERRIDE_KEYS = ['kospi','kosdaq','wti','gold','us10y','usdkrw'];
+const KR_OVERRIDE_KEYS = ['wti','gold','us10y','usdkrw'];
 // 미국 지수(S&P500/나스닥)도 야후 무료 데이터가 약 15분 지연되는 것으로 알려져 있어,
 // 그래프 우측 끝(장마감) 기준에 지연시간만큼 버퍼를 더해준다.
 const US_DELAY_BUFFER_KEYS = ['sp500','nasdaq'];
