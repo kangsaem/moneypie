@@ -125,8 +125,8 @@
     cursor:pointer;
   }
   .mkt-name{font-size:9px;color:var(--text-dim);margin-bottom:4px;line-height:1.5;}
-  .mkt-value{font-size:14px;font-weight:700;margin-top:2px;}
-  .mkt-change{font-size:19px;font-weight:700;margin:3px 0;}
+  .mkt-value{font-size:17px;font-weight:700;margin-top:2px;}
+  .mkt-change{font-size:16px;font-weight:700;margin:3px 0;}
   .mkt-refresh{background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:11px;flex-shrink:0;align-self:center;text-decoration:underline;}
   .chart-box h3{font-size:13px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin:0 0 12px;}
   .legend{display:flex;flex-direction:column;gap:6px;margin:12px auto 0;font-size:13px;width:fit-content;text-align:left;}
@@ -388,9 +388,10 @@ function sparklineIntradaySVG(points, marketOpen, marketClose, width, height, ba
 
 function formatMarketValue(key, price){
   if(price === undefined || price === null || isNaN(price)) return '-';
-  if(key === 'usdkrw') return Math.round(price).toLocaleString() + '원';
-  if(key === 'us10y') return price.toFixed(2) + '%';
-  if(key === 'wti' || key === 'gold') return '$' + price.toFixed(2);
+  const unitStyle = 'font-size:0.55em;';
+  if(key === 'usdkrw') return Math.round(price).toLocaleString() + `<span style="${unitStyle}">원</span>`;
+  if(key === 'us10y') return price.toFixed(2) + `<span style="${unitStyle}">%</span>`;
+  if(key === 'wti' || key === 'gold') return `<span style="${unitStyle}">$</span>` + price.toFixed(2);
   return price.toLocaleString(undefined, {maximumFractionDigits:2});
 }
 
@@ -1649,7 +1650,7 @@ function renderSnapshotsPanel(){
     const total = _.sumBy(_.flatMap(s.accounts, a => a.holdings), 'amount');
     return `<div style="position:relative;">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;">
-        <span class="num" style="color:var(--text-dim);">${escapeHTML(fullMonthLabel(s.label))}</span>
+        <span class="num" style="color:var(--text-dim);">${escapeHTML(shortMonthLabel(s.label))}</span>
         <span class="num" style="color:var(--text-dim);flex:1;text-align:right;">${total.toLocaleString()}원</span>
         <button class="del" data-memosnap="${s.id}">메모</button>
         <button class="del" data-editsnap="${s.id}">수정</button>
