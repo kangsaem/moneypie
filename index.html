@@ -378,7 +378,11 @@ function sparklineIntradaySVG(points, marketOpen, marketClose, width, height, ba
   if(!points || points.length < 2 || !marketOpen || !marketClose || marketClose <= marketOpen){
     return sparklineSVG((points||[]).map(p=>p.close), width, height, baselineValue);
   }
-  const span = marketClose - marketOpen;
+  // 실제 마지막 데이터 시각이 예상 마감(+지연버퍼)보다 늦으면, 그 시각까지 오른쪽 끝을 자동으로 늘려서
+  // 지연시간을 정확히 몰라도 항상 실제 데이터 끝까지 그래프가 채워지도록 한다.
+  const lastPointTs = points[points.length-1].ts;
+  const effectiveClose = Math.max(marketClose, lastPointTs);
+  const span = effectiveClose - marketOpen;
   const closesVals = points.map(p => p.close);
   const min = Math.min(...closesVals, ...(baselineValue!==undefined?[baselineValue]:[])), max = Math.max(...closesVals, ...(baselineValue!==undefined?[baselineValue]:[]));
   const valRange = (max-min) || 1;
@@ -426,6 +430,13 @@ function renderMarketTicker(){
     const change = computePeriodChange(d, range);
     const changeColor = change > 0 ? '#E87BA4' : (change < 0 ? '#5FB8E0' : 'var(--text-dim)');
     const arrow = change > 0 ? '▲' : (change < 0 ? '▼' : '');
+    // 장마감 후 야후가 meta.currentTradingPeriod를 "내일 장 시간"으로 잘못 줄 때가 있어
+    // (구간이 하루보다 훨씬 길어짐) - 이 경우 오늘 한국장 시간(09:00~15:30)으로 안전하게 보정
+    if(range === '1d' && d.marketOpen && d.marketClose && (d.marketClose - d.marketOpen) > 20*3600){
+      const kr = koreanMarketTimesForToday();
+      d.marketOpen = kr.open;
+      d.marketClose = kr.close;
+    }
     if(range === '1d' && KR_OVERRIDE_KEYS.includes(cfg.key)){
       const kr = koreanMarketTimesForToday();
       d.marketOpen = kr.open;
