@@ -306,6 +306,17 @@ async function fetchYahooChart(symbol, range, wideIntraday){
         points.push({ ts: timestamps[i], close: rawCloses[i] });
       }
     }
+    // 형성 중인 최근 봉은 close가 null로 와서 위에서 건너뛰기 때문에,
+    // 실제로는 더 최근 시각의 타임스탬프가 있는데도 포인트 배열의 끝이 그보다 앞에서 끊길 수 있다.
+    // 야후가 주는 최신 스냅샷 가격(meta.regularMarketPrice/regularMarketTime)을 마지막 지점으로 보충해준다.
+    const lastRawTs = timestamps.length ? timestamps[timestamps.length - 1] : null;
+    const snapshotTs = meta.regularMarketTime || lastRawTs;
+    if(snapshotTs && meta.regularMarketPrice !== undefined && meta.regularMarketPrice !== null){
+      const lastPointTs = points.length ? points[points.length - 1].ts : null;
+      if(!lastPointTs || snapshotTs > lastPointTs){
+        points.push({ ts: snapshotTs, close: meta.regularMarketPrice });
+      }
+    }
     const trading = meta.currentTradingPeriod && meta.currentTradingPeriod.regular;
     return {
       price: meta.regularMarketPrice,
