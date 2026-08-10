@@ -144,7 +144,7 @@
 </head>
 <body>
 <div class="wrap">
-  <button class="mkt-refresh" id="mktRefreshBtn" style="margin-bottom:4px;">새로고침</button>
+  <button class="mkt-refresh" id="mktRefreshBtn" style="margin-bottom:4px;">새로고침</button><span style="font-size:11px;color:var(--text-dim);margin-left:4px;">- 약 15분 지연시세</span>
   <div id="marketTicker" style="display:flex;gap:8px;overflow-x:auto;padding:2px 0 14px;margin-bottom:14px;border-bottom:1px solid var(--border);">
     <div style="color:var(--text-dim);font-size:12px;padding:10px 0;">시장 지표 불러오는 중...</div>
   </div>
@@ -227,12 +227,18 @@ const MARKET_RANGE_CYCLE = ['1d','1mo','3mo','6mo','1y'];
 const KOREA_SESSION_KEYS = ['wti','gold','us10y','usdkrw'];
 const NAVER_INDEX_MAP = { kospi:'KOSPI', kosdaq:'KOSDAQ' };
 
+function fetchWithTimeout(url, opts, ms){
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms || 4000);
+  return fetch(url, { ...opts, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
 async function fetchNaverIndex(naverCode){
   const targetUrl = `https://polling.finance.naver.com/api/realtime/domestic/index/${naverCode}?_=${Date.now()}`;
   const attempts = [
-    () => fetch(targetUrl, { cache: 'no-store' }),
-    () => fetch(`https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`, { cache: 'no-store' }),
-    () => fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`, { cache: 'no-store' })
+    () => fetchWithTimeout(targetUrl, { cache: 'no-store' }, 3000),
+    () => fetchWithTimeout(`https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`, { cache: 'no-store' }, 4000),
+    () => fetchWithTimeout(`https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`, { cache: 'no-store' }, 4000)
   ];
   let res = null;
   for(const attempt of attempts){
@@ -273,10 +279,10 @@ async function fetchYahooChart(symbol, range){
   const targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${apiRange}&interval=${interval}&_=${Date.now()}`;
   let res;
   try{
-    res = await fetch(targetUrl, { cache: 'no-store' });
+    res = await fetchWithTimeout(targetUrl, { cache: 'no-store' }, 3000);
     if(!res.ok) throw new Error('direct fetch failed');
   }catch(e){
-    res = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`, { cache: 'no-store' });
+    res = await fetchWithTimeout(`https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`, { cache: 'no-store' }, 5000);
   }
   const data = await res.json();
   const result = data.chart.result[0];
@@ -412,6 +418,11 @@ function renderMarketTicker(){
     const change = computePeriodChange(d, range);
     const changeColor = change > 0 ? '#E87BA4' : (change < 0 ? '#5FB8E0' : 'var(--text-dim)');
     const sign = change >= 0 ? '+' : '';
+    if(range === '1d' && KOREA_SESSION_KEYS.includes(cfg.key)){
+      const kr = koreanMarketTimesForToday();
+      d.marketOpen = kr.open;
+      d.marketClose = kr.close;
+    }
     const baseline = range === '1d' ? d.prevClose : ((d.closes && d.closes[0]) || undefined);
     const chart = (range === '1d' && d.intradayPoints)
       ? sparklineIntradaySVG(d.intradayPoints, d.marketOpen, d.marketClose, 90, 24, baseline)
