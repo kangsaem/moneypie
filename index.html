@@ -1648,12 +1648,14 @@ function renderSnapshotsPanel(){
   const manageRows = state.snapshots.slice().reverse().map(s => {
     const total = _.sumBy(_.flatMap(s.accounts, a => a.holdings), 'amount');
     return `<div style="position:relative;">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;">
-        <span class="num" style="color:var(--text-dim);">${escapeHTML(shortMonthLabel(s.label))}</span>
-        <span class="num" style="color:var(--text-dim);flex:1;text-align:right;">${total.toLocaleString()}원</span>
-        <button class="del" data-memosnap="${s.id}">메모</button>
-        <button class="del" data-editsnap="${s.id}">수정</button>
-        <button class="del" data-delsnap="${s.id}">삭제</button>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;">
+        <span class="num" style="color:var(--text-dim);flex-shrink:0;">${escapeHTML(shortMonthLabel(s.label))}</span>
+        <span class="num" style="color:var(--text-dim);flex:1;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${total.toLocaleString()}원</span>
+        <div style="display:flex;gap:4px;flex-shrink:0;">
+          <button class="del" data-memosnap="${s.id}">메모</button>
+          <button class="del" data-editsnap="${s.id}">수정</button>
+          <button class="del" data-delsnap="${s.id}">삭제</button>
+        </div>
       </div>
       <div id="snap-memo-slot-${s.id}"></div>
     </div>`;
