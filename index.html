@@ -1300,7 +1300,7 @@ function renderTotalMemoBox(snapId){
     </div>`;
   }
   slot.innerHTML = `<div class="floating-acc" style="background:#EDEDED;color:#333333;border-radius:8px;padding:12px 16px;text-align:left;box-sizing:border-box;width:260px;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:20;box-shadow:0 8px 24px rgba(0,0,0,0.5);">
-    <div style="font-size:11px;color:#555555;margin-bottom:4px;">${escapeHTML(monthLabel)} 메모</div>
+    <div style="font-size:11px;color:#555555;margin-bottom:4px;">${escapeHTML(monthLabel)}</div>
     ${inner}
   </div>`;
   const saveBtn = document.getElementById('total-memo-save');
