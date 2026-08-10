@@ -145,7 +145,7 @@
 </head>
 <body>
 <div class="wrap">
-  <button class="mkt-refresh" id="mktRefreshBtn" style="margin-bottom:4px;">새로고침</button><span style="font-size:11px;color:var(--text-dim);margin-left:4px;">- 약 15분 지연시세</span>
+  <button class="mkt-refresh" id="mktRefreshBtn" style="margin-bottom:4px;">새로고침</button><span style="font-size:11px;color:var(--text-dim);margin-left:4px;">- 약 20분 지연 시세</span>
   <div id="marketTicker" style="display:flex;gap:8px;overflow-x:auto;padding:2px 0 14px;margin-bottom:14px;border-bottom:1px solid var(--border);">
     <div style="color:var(--text-dim);font-size:12px;padding:10px 0;">시장 지표 불러오는 중...</div>
   </div>
@@ -226,6 +226,11 @@ const MARKET_RANGE_CYCLE = ['1d','1mo','3mo','6mo','1y'];
 // 원자재/미국채/환율은 자체 거래시간이 24시간에 가까워 "정규장" 개념이 애매하므로,
 // 한국 증시 정규장(09:00~15:30 KST) 시간을 기준선으로 빌려와서 그린다.
 const KOREA_SESSION_KEYS = ['wti','gold','us10y','usdkrw'];
+const KR_OVERRIDE_KEYS = ['kospi','kosdaq','wti','gold','us10y','usdkrw'];
+// 미국 지수(S&P500/나스닥)도 야후 무료 데이터가 약 15분 지연되는 것으로 알려져 있어,
+// 그래프 우측 끝(장마감) 기준에 지연시간만큼 버퍼를 더해준다.
+const US_DELAY_BUFFER_KEYS = ['sp500','nasdaq'];
+const US_DELAY_BUFFER_SEC = 15 * 60;
 const NAVER_INDEX_MAP = { kospi:'KOSPI', kosdaq:'KOSDAQ' };
 
 function fetchWithTimeout(url, opts, ms){
@@ -261,7 +266,9 @@ function koreanMarketTimesForToday(){
   const kst = new Date(kstMs);
   const y = kst.getUTCFullYear(), m = kst.getUTCMonth(), d = kst.getUTCDate();
   const openMs = Date.UTC(y, m, d, 0, 0, 0);   // 09:00 KST = 00:00 UTC
-  const closeMs = Date.UTC(y, m, d, 6, 30, 0); // 15:30 KST = 06:30 UTC
+  // 시세가 약 20분 지연되어 오므로, 그래프 우측 끝은 실제 장마감(15:30)이 아니라
+  // 지연시간을 더한 15:50 기준으로 잡아야 실제 장마감 시점에 정확히 끝까지 도달한다.
+  const closeMs = Date.UTC(y, m, d, 6, 50, 0); // 15:50 KST = 06:50 UTC
   return { open: openMs/1000, close: closeMs/1000 };
 }
 const MARKET_RANGE_LABEL = { '1d':'1일', '1mo':'1개월', '3mo':'3개월', '6mo':'6개월', '1y':'12개월' };
@@ -419,10 +426,14 @@ function renderMarketTicker(){
     const change = computePeriodChange(d, range);
     const changeColor = change > 0 ? '#E87BA4' : (change < 0 ? '#5FB8E0' : 'var(--text-dim)');
     const arrow = change > 0 ? '▲' : (change < 0 ? '▼' : '');
-    if(range === '1d' && KOREA_SESSION_KEYS.includes(cfg.key)){
+    if(range === '1d' && KR_OVERRIDE_KEYS.includes(cfg.key)){
       const kr = koreanMarketTimesForToday();
       d.marketOpen = kr.open;
       d.marketClose = kr.close;
+    }
+    if(range === '1d' && US_DELAY_BUFFER_KEYS.includes(cfg.key) && d.marketClose && !d._delayBuffered){
+      d.marketClose += US_DELAY_BUFFER_SEC;
+      d._delayBuffered = true;
     }
     const baseline = range === '1d' ? d.prevClose : ((d.closes && d.closes[0]) || undefined);
     const chart = (range === '1d' && d.intradayPoints)
@@ -453,8 +464,8 @@ async function setMarketRange(key, targetRange){
     return;
   }
   try{
-    const data = await fetchYahooChart(cfg.symbol, targetRange, KOREA_SESSION_KEYS.includes(key));
-    if(targetRange === '1d' && KOREA_SESSION_KEYS.includes(key) && data){
+    const data = await fetchYahooChart(cfg.symbol, targetRange, KR_OVERRIDE_KEYS.includes(key));
+    if(targetRange === '1d' && KR_OVERRIDE_KEYS.includes(key) && data){
       const kr = koreanMarketTimesForToday();
       data.marketOpen = kr.open;
       data.marketClose = kr.close;
@@ -483,12 +494,12 @@ async function loadMarketData(forceRefresh){
       }
     }catch(e){}
   }
-  const results = await Promise.allSettled(MARKET_SYMBOLS.map(cfg => fetchYahooChart(cfg.symbol, '1d', KOREA_SESSION_KEYS.includes(cfg.key))));
+  const results = await Promise.allSettled(MARKET_SYMBOLS.map(cfg => fetchYahooChart(cfg.symbol, '1d', KR_OVERRIDE_KEYS.includes(cfg.key))));
   const dataMap = {};
   const kr = koreanMarketTimesForToday();
   MARKET_SYMBOLS.forEach((cfg, i) => {
     const value = results[i].status === 'fulfilled' ? results[i].value : null;
-    if(value && KOREA_SESSION_KEYS.includes(cfg.key)){
+    if(value && KR_OVERRIDE_KEYS.includes(cfg.key)){
       value.marketOpen = kr.open;
       value.marketClose = kr.close;
     }
@@ -1778,7 +1789,7 @@ function renderPanel(){
       <div class="account-header" style="justify-content:center;flex-direction:column;gap:4px;">
         <span class="total-badge">평가액<span class="num">${grandTotal.toLocaleString()}원</span></span>
         ${totalCreditUsed > 0 ? `<span class="total-badge">마통사용<span class="num" style="color:${CREDIT_USED_COLOR};">${totalCreditUsed.toLocaleString()}원</span></span>` : ''}
-        ${thisMonthSnap ? `<div style="position:relative;"><button class="btn-memo" data-memosnap="${thisMonthSnap.id}">메모</button><div id="snap-memo-slot-${thisMonthSnap.id}"></div></div>` : ''}
+        ${thisMonthSnap ? `<div style="position:relative;margin-top:8px;"><button class="btn-memo" data-memosnap="${thisMonthSnap.id}">메모</button><div id="snap-memo-slot-${thisMonthSnap.id}"></div></div>` : ''}
       </div>
       <div style="max-width:520px;margin:0 auto;overflow-x:auto;">${holdingsTable(allHoldings, null, false, true, true, true)}</div>
       <div class="charts">
