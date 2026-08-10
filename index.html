@@ -120,12 +120,13 @@
   .mkt-card{
     flex-shrink:0;width:108px;
     background:var(--surface);border:1px solid var(--border);border-radius:8px;
-    padding:8px 12px;
+    padding:10px 12px 12px;
     box-sizing:border-box;
+    cursor:pointer;
   }
-  .mkt-name{font-size:9px;color:var(--text-dim);margin-bottom:2px;white-space:nowrap;}
-  .mkt-value{font-size:14px;font-weight:700;}
-  .mkt-change{font-size:10px;font-weight:600;}
+  .mkt-name{font-size:9px;color:var(--text-dim);margin-bottom:4px;line-height:1.5;}
+  .mkt-value{font-size:14px;font-weight:700;margin-top:2px;}
+  .mkt-change{font-size:11px;font-weight:600;}
   .mkt-refresh{background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:11px;flex-shrink:0;align-self:center;text-decoration:underline;}
   .chart-box h3{font-size:13px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin:0 0 12px;}
   .legend{display:flex;flex-direction:column;gap:6px;margin:12px auto 0;font-size:13px;width:fit-content;text-align:left;}
@@ -227,13 +228,13 @@ const KOREA_SESSION_KEYS = ['wti','gold','us10y','usdkrw'];
 const NAVER_INDEX_MAP = { kospi:'KOSPI', kosdaq:'KOSDAQ' };
 
 async function fetchNaverIndex(naverCode){
-  const targetUrl = `https://polling.finance.naver.com/api/realtime/domestic/index/${naverCode}`;
+  const targetUrl = `https://polling.finance.naver.com/api/realtime/domestic/index/${naverCode}?_=${Date.now()}`;
   let res;
   try{
-    res = await fetch(targetUrl);
+    res = await fetch(targetUrl, { cache: 'no-store' });
     if(!res.ok) throw new Error('direct fetch failed');
   }catch(e){
-    res = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`);
+    res = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`, { cache: 'no-store' });
   }
   const json = await res.json();
   const row = json.datas && json.datas[0];
@@ -263,13 +264,13 @@ async function fetchYahooChart(symbol, range){
   const isIntraday = range === '1d';
   const apiRange = isIntraday ? '1d' : range;
   const interval = isIntraday ? '5m' : '1d';
-  const targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${apiRange}&interval=${interval}`;
+  const targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${apiRange}&interval=${interval}&_=${Date.now()}`;
   let res;
   try{
-    res = await fetch(targetUrl);
+    res = await fetch(targetUrl, { cache: 'no-store' });
     if(!res.ok) throw new Error('direct fetch failed');
   }catch(e){
-    res = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`);
+    res = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`, { cache: 'no-store' });
   }
   const data = await res.json();
   const result = data.chart.result[0];
@@ -381,6 +382,10 @@ function formatMarketValue(key, price){
   return price.toLocaleString(undefined, {maximumFractionDigits:2});
 }
 
+function periodTabsHtml(key, range){
+  return MARKET_RANGE_CYCLE.map(r => `<span data-mktkey="${key}" data-setrange="${r}" style="cursor:pointer;font-size:8px;padding:0 1.5px;${r===range?'color:#EDEDED;font-weight:700;':'color:var(--text-dim);'}">${MARKET_RANGE_LABEL[r]}</span>`).join('');
+}
+
 function renderMarketTicker(){
   const el = document.getElementById('marketTicker');
   if(!el) return;
@@ -394,10 +399,10 @@ function renderMarketTicker(){
     const marketNotOpenYet = range === '1d' && d.marketOpen && nowSec < d.marketOpen && !KOREA_SESSION_KEYS.includes(cfg.key);
 
     if(marketNotOpenYet){
-      return `<div class="mkt-card" data-mktkey="${cfg.key}" style="cursor:pointer;" title="클릭하면 1일/1개월/3개월/6개월/12개월 그래프로 전환됩니다">
-        <div class="mkt-name">${cfg.name} <span class="mkt-change" style="color:var(--text-dim);">개장 전</span></div>
+      return `<div class="mkt-card" data-mktkey="${cfg.key}">
+        <div class="mkt-name">${cfg.name}<br>${periodTabsHtml(cfg.key, range)}</div>
+        <div class="mkt-change" style="color:var(--text-dim);">개장 전</div>
         <div class="mkt-value">${formatMarketValue(cfg.key, d.price)}</div>
-        <div style="font-size:9px;color:var(--text-dim);margin-top:1px;">${MARKET_RANGE_LABEL[range]}</div>
         <div style="height:24px;margin-top:4px;border-top:1px dashed var(--border);"></div>
       </div>`;
     }
@@ -409,41 +414,44 @@ function renderMarketTicker(){
     const chart = (range === '1d' && d.intradayPoints)
       ? sparklineIntradaySVG(d.intradayPoints, d.marketOpen, d.marketClose, 90, 24, baseline)
       : sparklineSVG(d.closes || [], 90, 24, baseline);
-    return `<div class="mkt-card" data-mktkey="${cfg.key}" style="cursor:pointer;" title="클릭하면 1일/1개월/3개월/6개월/12개월 그래프로 전환됩니다">
-      <div class="mkt-name">${cfg.name} <span class="mkt-change" style="color:${changeColor};">${sign}${change.toFixed(2)}%</span></div>
+    return `<div class="mkt-card" data-mktkey="${cfg.key}">
+      <div class="mkt-name">${cfg.name}<br>${periodTabsHtml(cfg.key, range)}</div>
+      <div class="mkt-change" style="color:${changeColor};">${sign}${change.toFixed(2)}%</div>
       <div class="mkt-value">${formatMarketValue(cfg.key, d.price)}</div>
-      <div style="font-size:9px;color:var(--text-dim);margin-top:1px;">${MARKET_RANGE_LABEL[range]}</div>
       ${chart}
     </div>`;
   }).join('');
   el.innerHTML = cards;
-  el.querySelectorAll('[data-mktkey]').forEach(card => {
+  el.querySelectorAll('.mkt-card[data-mktkey]').forEach(card => {
     card.addEventListener('click', () => cycleMarketRange(card.dataset.mktkey));
+  });
+  el.querySelectorAll('[data-setrange]').forEach(span => {
+    span.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setMarketRange(span.dataset.mktkey, span.dataset.setrange);
+    });
   });
 }
 
-async function cycleMarketRange(key){
+async function setMarketRange(key, targetRange){
   const cfg = MARKET_SYMBOLS.find(c => c.key === key);
   if(!cfg) return;
-  const curRange = marketRangeState[key] || '1d';
-  const idx = MARKET_RANGE_CYCLE.indexOf(curRange);
-  const nextRange = MARKET_RANGE_CYCLE[(idx+1) % MARKET_RANGE_CYCLE.length];
-  marketRangeState[key] = nextRange;
+  marketRangeState[key] = targetRange;
 
-  const cacheKey = key + '_' + nextRange;
+  const cacheKey = key + '_' + targetRange;
   if(marketFetchCache[cacheKey]){
     marketData[key] = marketFetchCache[cacheKey];
     renderMarketTicker();
     return;
   }
   try{
-    const data = await fetchYahooChart(cfg.symbol, nextRange);
-    if(nextRange === '1d' && KOREA_SESSION_KEYS.includes(key) && data){
+    const data = await fetchYahooChart(cfg.symbol, targetRange);
+    if(targetRange === '1d' && KOREA_SESSION_KEYS.includes(key) && data){
       const kr = koreanMarketTimesForToday();
       data.marketOpen = kr.open;
       data.marketClose = kr.close;
     }
-    if(nextRange === '1d' && NAVER_INDEX_MAP[key] && data){
+    if(targetRange === '1d' && NAVER_INDEX_MAP[key] && data){
       try{
         const naver = await fetchNaverIndex(NAVER_INDEX_MAP[key]);
         if(naver){ data.price = naver.price; data.naverChangePct = naver.changePct; }
@@ -453,6 +461,13 @@ async function cycleMarketRange(key){
     marketData[key] = data;
   }catch(e){}
   renderMarketTicker();
+}
+
+async function cycleMarketRange(key){
+  const curRange = marketRangeState[key] || '1d';
+  const idx = MARKET_RANGE_CYCLE.indexOf(curRange);
+  const nextRange = MARKET_RANGE_CYCLE[(idx+1) % MARKET_RANGE_CYCLE.length];
+  await setMarketRange(key, nextRange);
 }
 
 async function loadMarketData(forceRefresh){
@@ -982,7 +997,7 @@ let sectorAccordionOpenIdx = null;
 
 function accordionRowHTML(label, pct){
   const name = label === '현금' ? '현금' : escapeHTML(label);
-  return `<div style="display:flex;justify-content:space-between;gap:8px;padding:4px 0;font-size:12px;color:#EDEDED;border-bottom:1px solid var(--border);"><span>${name}</span><span class="num">${pct.toFixed(1)}%</span></div>`;
+  return `<div style="display:flex;justify-content:space-between;gap:8px;padding:4px 0;font-size:12px;color:#333333;border-bottom:1px solid #C9C9C9;"><span>${name}</span><span class="num">${pct.toFixed(1)}%</span></div>`;
 }
 
 function sectorChartBlock(holdings){
@@ -1021,7 +1036,7 @@ function bindSectorAccordionHandlers(){
       const holdings = sectorAccordionHoldings.filter(h => h.group === label);
       const breakdown = reorderCashFirst(computeWeights(holdings, 'name'));
       const rows = breakdown.map(d => accordionRowHTML(d.label, d.pct)).join('');
-      slot.innerHTML = `<div style="background:var(--surface);border-radius:6px;padding:8px 12px;text-align:left;box-sizing:border-box;width:240px;position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:4px;z-index:5;box-shadow:0 4px 12px rgba(0,0,0,0.4);">
+      slot.innerHTML = `<div style="background:#EDEDED;color:#333333;border-radius:6px;padding:8px 12px;text-align:left;box-sizing:border-box;width:240px;position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:4px;z-index:5;box-shadow:0 4px 12px rgba(0,0,0,0.4);">
         ${rows || '<div class="empty">데이터 없음</div>'}
       </div>`;
       sectorAccordionOpenIdx = idx;
@@ -1079,7 +1094,7 @@ function bindRegionAccordionHandlers(){
         breakdown = reorderCashFirst(computeWeights(holdings, 'group'));
       }
       const rows = breakdown.map(d => accordionRowHTML(d.label, d.pct)).join('');
-      slot.innerHTML = `<div style="background:var(--surface);border-radius:6px;padding:8px 12px;text-align:left;box-sizing:border-box;width:240px;position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:4px;z-index:5;box-shadow:0 4px 12px rgba(0,0,0,0.4);">
+      slot.innerHTML = `<div style="background:#EDEDED;color:#333333;border-radius:6px;padding:8px 12px;text-align:left;box-sizing:border-box;width:240px;position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:4px;z-index:5;box-shadow:0 4px 12px rgba(0,0,0,0.4);">
         ${rows || '<div class="empty">데이터 없음</div>'}
       </div>`;
       regionAccordionOpenIdx = idx;
@@ -1245,6 +1260,7 @@ function stackedBarSVG(data, width, height, type){
 }
 
 let openTotalMemoId = null;
+let totalMemoEditState = {};
 
 function toggleTotalMemoAccordion(snapId){
   const slot = document.getElementById('total-memo-slot');
@@ -1254,23 +1270,44 @@ function toggleTotalMemoAccordion(snapId){
     openTotalMemoId = null;
     return;
   }
+  openTotalMemoId = snapId;
+  delete totalMemoEditState[snapId];
+  renderTotalMemoBox(snapId);
+}
+
+function renderTotalMemoBox(snapId){
+  const slot = document.getElementById('total-memo-slot');
+  if(!slot) return;
   const snap = state.snapshots.find(s => s.id === snapId);
   const memoText = snap ? (snap.memo || '') : '';
   const monthLabel = snap ? fullMonthLabel(snap.label) : '';
-  slot.innerHTML = `<div style="background:var(--surface);border-radius:6px;padding:8px 12px;text-align:left;box-sizing:border-box;max-width:280px;margin:0 auto 10px;box-shadow:0 4px 12px rgba(0,0,0,0.4);">
-    <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">${escapeHTML(monthLabel)} 메모</div>
-    <textarea id="total-memo-textarea" placeholder="메모를 입력하세요" style="width:100%;box-sizing:border-box;min-height:60px;background:var(--bg);color:#EDEDED;border:1px solid var(--border);border-radius:4px;padding:6px;font-size:12px;font-family:inherit;resize:vertical;">${escapeHTML(memoText)}</textarea>
+  const hasMemo = !!memoText.trim();
+  const editing = totalMemoEditState[snapId] !== undefined ? totalMemoEditState[snapId] : !hasMemo;
+  let inner;
+  if(editing){
+    inner = `<textarea id="total-memo-textarea" placeholder="메모를 입력하세요" style="width:100%;box-sizing:border-box;min-height:60px;background:#FFFFFF;color:#333333;border:1px solid #C9C9C9;border-radius:4px;padding:6px;font-size:12px;font-family:inherit;resize:vertical;">${escapeHTML(memoText)}</textarea>
     <div style="text-align:right;margin-top:6px;">
       <button class="btn btn-primary" id="total-memo-save" style="padding:4px 10px;font-size:12px;">메모저장</button>
-    </div>
+    </div>`;
+  } else {
+    inner = `<div style="white-space:pre-wrap;font-size:12px;line-height:1.5;">${escapeHTML(memoText)}</div>
+    <div style="text-align:right;margin-top:6px;">
+      <button class="btn btn-primary" id="total-memo-edit" style="padding:4px 10px;font-size:12px;">메모수정</button>
+    </div>`;
+  }
+  slot.innerHTML = `<div style="background:#EDEDED;color:#333333;border-radius:6px;padding:8px 12px;text-align:left;box-sizing:border-box;max-width:280px;margin:0 auto 10px;box-shadow:0 4px 12px rgba(0,0,0,0.4);">
+    <div style="font-size:11px;color:#555555;margin-bottom:4px;">${escapeHTML(monthLabel)} 메모</div>
+    ${inner}
   </div>`;
-  openTotalMemoId = snapId;
-  document.getElementById('total-memo-save').addEventListener('click', () => {
+  const saveBtn = document.getElementById('total-memo-save');
+  if(saveBtn) saveBtn.addEventListener('click', () => {
     if(snap) snap.memo = document.getElementById('total-memo-textarea').value;
     saveSnapshots();
-    slot.innerHTML = '';
-    openTotalMemoId = null;
+    totalMemoEditState[snapId] = false;
+    renderTotalMemoBox(snapId);
   });
+  const editBtn = document.getElementById('total-memo-edit');
+  if(editBtn) editBtn.addEventListener('click', () => { totalMemoEditState[snapId] = true; renderTotalMemoBox(snapId); });
 }
 
 let trendRowData = {};
@@ -1296,10 +1333,13 @@ function toggleTrendAccordion(rowId){
   }
   const data = trendRowData[rowId] || [];
   const rows = data.map(d => accordionRowHTML(d.label, d.pct)).join('');
-  slot.innerHTML = `<div style="background:var(--surface);border-radius:6px;padding:8px 12px;text-align:left;box-sizing:border-box;width:240px;position:absolute;bottom:100%;left:50%;transform:translateX(-50%);margin-bottom:4px;z-index:5;box-shadow:0 4px 12px rgba(0,0,0,0.4);">
+  slot.innerHTML = `<div data-trendclose="${rowId}" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:999;"></div>
+  <div style="background:#EDEDED;color:#333333;border-radius:8px;padding:12px 16px;text-align:left;box-sizing:border-box;width:260px;max-height:70vh;overflow-y:auto;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;box-shadow:0 8px 24px rgba(0,0,0,0.5);">
     ${rows || '<div class="empty">데이터 없음</div>'}
   </div>`;
   openTrendRowId = rowId;
+  const backdrop = slot.querySelector('[data-trendclose]');
+  if(backdrop) backdrop.addEventListener('click', () => toggleTrendAccordion(rowId));
 }
 
 function trendBarsHTML(snapshots, groupKey, type, title, compact, idPrefix){
@@ -1554,6 +1594,7 @@ function renderDeleteAccountsPanel(){
 }
 
 let openMemoSnapId = null;
+let memoEditState = {};
 
 function toggleMemoAccordion(snapId){
   const slot = document.getElementById('snap-memo-slot-' + snapId);
@@ -1567,17 +1608,35 @@ function toggleMemoAccordion(snapId){
     openMemoSnapId = null;
     return;
   }
+  openMemoSnapId = snapId;
+  delete memoEditState[snapId];
+  renderMemoBox(snapId);
+}
+
+function renderMemoBox(snapId){
+  const slot = document.getElementById('snap-memo-slot-' + snapId);
+  if(!slot) return;
   const snap = state.snapshots.find(s => s.id === snapId);
   const memoText = snap ? (snap.memo || '') : '';
-  slot.innerHTML = `<div style="background:var(--surface);border-radius:6px;padding:8px 12px;text-align:left;box-sizing:border-box;width:240px;position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:4px;z-index:5;box-shadow:0 4px 12px rgba(0,0,0,0.4);">
-    <textarea id="memo-textarea-${snapId}" placeholder="메모를 입력하세요" style="width:100%;box-sizing:border-box;min-height:60px;background:var(--bg);color:#EDEDED;border:1px solid var(--border);border-radius:4px;padding:6px;font-size:12px;font-family:inherit;resize:vertical;">${escapeHTML(memoText)}</textarea>
+  const hasMemo = !!memoText.trim();
+  const editing = memoEditState[snapId] !== undefined ? memoEditState[snapId] : !hasMemo;
+  let inner;
+  if(editing){
+    inner = `<textarea id="memo-textarea-${snapId}" placeholder="메모를 입력하세요" style="width:100%;box-sizing:border-box;min-height:60px;background:#FFFFFF;color:#333333;border:1px solid #C9C9C9;border-radius:4px;padding:6px;font-size:12px;font-family:inherit;resize:vertical;">${escapeHTML(memoText)}</textarea>
     <div style="text-align:right;margin-top:6px;">
       <button class="btn btn-primary" data-savememo="${snapId}" style="padding:4px 10px;font-size:12px;">메모저장</button>
-    </div>
-  </div>`;
-  openMemoSnapId = snapId;
+    </div>`;
+  } else {
+    inner = `<div style="white-space:pre-wrap;font-size:12px;line-height:1.5;">${escapeHTML(memoText)}</div>
+    <div style="text-align:right;margin-top:6px;">
+      <button class="btn btn-primary" data-editmemo="${snapId}" style="padding:4px 10px;font-size:12px;">메모수정</button>
+    </div>`;
+  }
+  slot.innerHTML = `<div style="background:#EDEDED;color:#333333;border-radius:6px;padding:8px 12px;text-align:left;box-sizing:border-box;width:240px;position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:4px;z-index:5;box-shadow:0 4px 12px rgba(0,0,0,0.4);">${inner}</div>`;
   const saveBtn = slot.querySelector('[data-savememo]');
   if(saveBtn) saveBtn.addEventListener('click', () => saveSnapshotMemo(snapId));
+  const editBtn = slot.querySelector('[data-editmemo]');
+  if(editBtn) editBtn.addEventListener('click', () => { memoEditState[snapId] = true; renderMemoBox(snapId); });
 }
 
 function saveSnapshotMemo(snapId){
@@ -1586,9 +1645,8 @@ function saveSnapshotMemo(snapId){
   const ta = document.getElementById('memo-textarea-' + snapId);
   snap.memo = ta ? ta.value : '';
   saveSnapshots();
-  const slot = document.getElementById('snap-memo-slot-' + snapId);
-  if(slot) slot.innerHTML = '';
-  openMemoSnapId = null;
+  memoEditState[snapId] = false;
+  renderMemoBox(snapId);
 }
 
 function renderSnapshotsPanel(){
