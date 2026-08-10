@@ -388,10 +388,9 @@ function sparklineIntradaySVG(points, marketOpen, marketClose, width, height, ba
 
 function formatMarketValue(key, price){
   if(price === undefined || price === null || isNaN(price)) return '-';
-  const unitStyle = 'font-size:0.55em;';
-  if(key === 'usdkrw') return Math.round(price).toLocaleString() + `<span style="${unitStyle}">원</span>`;
-  if(key === 'us10y') return price.toFixed(2) + `<span style="${unitStyle}">%</span>`;
-  if(key === 'wti' || key === 'gold') return `<span style="${unitStyle}">$</span>` + price.toFixed(2);
+  if(key === 'usdkrw') return Math.round(price).toLocaleString();
+  if(key === 'us10y') return price.toFixed(2);
+  if(key === 'wti' || key === 'gold') return price.toFixed(2);
   return price.toLocaleString(undefined, {maximumFractionDigits:2});
 }
 
@@ -411,7 +410,7 @@ function renderMarketTicker(){
       return `<div class="mkt-card" data-mktkey="${cfg.key}">
         <div class="mkt-name" style="display:flex;justify-content:space-between;align-items:baseline;"><span>${cfg.name}</span><span style="color:var(--text-dim);">${MARKET_RANGE_LABEL[range]}</span></div>
         <div class="mkt-value">${formatMarketValue(cfg.key, d.price)}</div>
-        <div class="mkt-change" style="color:var(--text-dim);">개장 전</div>
+        <div class="mkt-change" style="color:var(--text-dim);font-size:9px;font-weight:500;">개장 전</div>
         <div style="height:24px;margin-top:4px;border-top:1px dashed var(--border);"></div>
       </div>`;
     }
