@@ -1540,7 +1540,8 @@ function creditBarSVG(data, width, height, overlayLabel){
     const usedWidth = (data[0].amount/total) * width;
     const tx = Math.max(4, usedWidth - 6);
     const fontSize = Math.max(10, height - 4);
-    overlayText = `<text x="${tx.toFixed(1)}" y="${height/2}" font-size="${fontSize}" font-weight="900" fill="#fff" text-anchor="end" dominant-baseline="middle">${escapeHTML(overlayLabel)}</text>`;
+    const textY = height/2 + fontSize*0.35;
+    overlayText = `<text x="${tx.toFixed(1)}" y="${textY.toFixed(1)}" font-size="${fontSize}" font-weight="900" fill="#fff" text-anchor="end">${escapeHTML(overlayLabel)}</text>`;
   }
   return `<svg width="100%" height="${height}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" style="display:block;border-radius:4px;overflow:hidden;">${bars}${grid}${overlayText}</svg>`;
 }
@@ -1808,15 +1809,17 @@ function renderPanel(){
         <span class="total-badge">평가액<span class="num">${total.toLocaleString()}원</span></span>
       </div>
       ${subTabsHtml}
-      <div style="max-width:520px;margin:0 auto;overflow-x:auto;">${holdings.length===0 ? `<div class="empty">${label} 종목이 없습니다.</div>` : holdingsTable(holdings, null, false, false, true, true)}</div>
       <div class="charts">
         ${chartBlock('종목별 비중', byStock, 'stock')}
         ${sectorChartBlock(holdings)}
         ${(isDomestic && subType === '전체') ? chartBlock('계좌유형 비중', byAccountType, 'accountType') : ''}
         ${(!isDomestic && subType === '전체') ? chartBlock('직투/ETF 비중', byInvestType, 'accountType') : ''}
+        ${stockDetailButtonBlock(holdings)}
       </div>
     `;
     bindSectorAccordionHandlers();
+    const stockDetailBtnRegion = document.getElementById('stock-detail-btn');
+    if(stockDetailBtnRegion) stockDetailBtnRegion.addEventListener('click', toggleStockDetailAccordion);
     panel.querySelectorAll('[data-subtype]').forEach(btn => {
       btn.addEventListener('click', () => {
         if(isDomestic) state.domesticSubType = btn.dataset.subtype;
@@ -1843,7 +1846,6 @@ function renderPanel(){
         <span class="total-badge">평가액<span class="num">${grandTotal.toLocaleString()}원</span></span>
         ${thisMonthSnap ? `<div style="position:relative;margin-top:8px;"><button class="btn-memo" data-memosnap="${thisMonthSnap.id}">메모</button><div id="snap-memo-slot-${thisMonthSnap.id}"></div></div>` : ''}
       </div>
-      <div style="max-width:520px;margin:0 auto;overflow-x:auto;">${holdingsTable(allHoldings, null, false, true, true, true)}</div>
       <div class="charts">
         ${state.creditLines.length > 0 ? creditGaugeChartBlock(true) : ''}
         ${accountTypeBarChartBlock()}
