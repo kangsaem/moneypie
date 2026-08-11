@@ -175,7 +175,10 @@
   <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:24px;width:320px;max-width:100%;">
     <h3 style="margin:0 0 16px;font-size:16px;font-weight:700;">종목 수정</h3>
     <div style="display:flex;flex-direction:column;gap:10px;">
-      <input id="editName" placeholder="종목명" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:14px;font-family:inherit;">
+      <div style="position:relative;">
+        <input id="editName" placeholder="종목명" autocomplete="off" style="width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:14px;font-family:inherit;">
+        <div id="editNameAutocomplete" style="position:absolute;top:100%;left:0;right:0;z-index:2000;"></div>
+      </div>
       <input id="editAmount" type="number" placeholder="평가액" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:14px;font-family:inherit;">
       <input id="editGroup" placeholder="섹터" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:14px;font-family:inherit;">
       <select id="editRegion" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:14px;font-family:inherit;">
@@ -820,6 +823,98 @@ function deleteCreditLine(id){
   state.creditLines = state.creditLines.filter(c => c.id !== id);
   saveCreditLines(); render();
 }
+function setupStockNameAutocomplete(nameInput, acHolder, groupInput, regionSelect){
+  if(!nameInput || !acHolder) return;
+
+  function closeAutocomplete(){ if(acHolder) acHolder.innerHTML = ''; }
+
+  let engSearchDebounce = null;
+  let engSearchToken = 0;
+
+  function renderNameDropdown(items){
+    acHolder.innerHTML = `<div class="floating-acc" style="background:#EDEDED;color:#333333;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.4);overflow:hidden;margin-top:2px;">
+      ${items.map((it,idx) => `<div data-acidx="${idx}" style="padding:8px 10px;font-size:13px;cursor:pointer;border-bottom:1px solid #C9C9C9;display:flex;justify-content:space-between;align-items:center;gap:8px;">
+        <span>${escapeHTML(it.name)}</span>
+        ${it.isLocal ? '' : `<span style="font-size:10px;color:#888;white-space:nowrap;">${escapeHTML(it.nationName || '해외')}${it.isEtf ? ' · ETF' : ''}</span>`}
+      </div>`).join('')}
+    </div>`;
+    acHolder.querySelectorAll('[data-acidx]').forEach(el => {
+      el.addEventListener('click', () => {
+        const it = items[parseInt(el.dataset.acidx, 10)];
+        nameInput.value = it.name;
+        if(it.isLocal && groupInput && it.group) groupInput.value = it.group;
+        if(regionSelect && it.region) regionSelect.value = it.region;
+        closeAutocomplete();
+      });
+    });
+  }
+
+  nameInput.addEventListener('input', () => {
+    const val = nameInput.value.trim();
+    if(engSearchDebounce){ clearTimeout(engSearchDebounce); engSearchDebounce = null; }
+
+    if(!val || /^[0-9]+$/.test(val)){
+      closeAutocomplete();
+      return;
+    }
+
+    const history = getKnownStockHistory();
+    const isHangul = /[가-힣]/.test(val);
+
+    if(isHangul){
+      const matches = Object.keys(history).filter(n => n.includes(val)).slice(0, 6);
+      if(matches.length === 0){ closeAutocomplete(); return; }
+      renderNameDropdown(matches.map(n => ({ name: n, isLocal: true, group: history[n].group, region: history[n].region })));
+      return;
+    }
+
+    // 영어(그 외) 입력: 1글자는 아무것도 안 함, 2글자부터 로컬 이력 + 네이버 검색을 함께 표시
+    if(val.length < 2){ closeAutocomplete(); return; }
+    const localMatches = Object.keys(history).filter(n => n.toLowerCase().includes(val.toLowerCase())).slice(0, 4);
+    const localItems = localMatches.map(n => ({ name: n, isLocal: true, group: history[n].group, region: history[n].region }));
+    if(localItems.length > 0) renderNameDropdown(localItems);
+    else closeAutocomplete();
+
+    const myToken = ++engSearchToken;
+    engSearchDebounce = setTimeout(async () => {
+      let apiItems = [];
+      try{ apiItems = await searchNaverAutocomplete(val); }catch(e){}
+      if(myToken !== engSearchToken) return; // 그 사이 사용자가 더 입력해서 이 결과는 낡음
+      const combined = [
+        ...localItems,
+        ...apiItems.slice(0, 6).map(it => ({ name: it.name, isLocal: false, region: it.region, nationName: it.nationName, isEtf: it.isEtf }))
+      ];
+      if(combined.length === 0){ closeAutocomplete(); return; }
+      renderNameDropdown(combined);
+    }, 300);
+  });
+
+  nameInput.addEventListener('keydown', async (e) => {
+    if(e.key !== 'Enter') return;
+    const val = nameInput.value.trim();
+    if(!/^[0-9]+$/.test(val)) return;
+    e.preventDefault();
+    closeAutocomplete();
+    const original = val;
+    nameInput.value = original + ' (검색 중...)';
+    nameInput.disabled = true;
+    try{
+      const found = await fetchStockNameByCode(original);
+      nameInput.value = (found && found.name) || original;
+      if(found && found.region && regionSelect) regionSelect.value = found.region;
+      if(!found) alert('종목명을 찾지 못했습니다. 직접 입력해주세요.');
+    }catch(err){
+      nameInput.value = original;
+      alert('종목명 검색에 실패했습니다. 직접 입력해주세요.');
+    }
+    nameInput.disabled = false;
+  });
+
+  document.addEventListener('click', (e) => {
+    if(!e.target.closest(`#${acHolder.id}`) && e.target !== nameInput) closeAutocomplete();
+  });
+}
+
 function getKnownStockHistory(){
   const map = {};
   state.accounts.forEach(a => {
@@ -2017,100 +2112,13 @@ function renderPanel(){
     if(!name || isNaN(amount)) return;
     addHolding(acc.id, name, group, amount, region);
   });
-  {
-    const nameInput = document.getElementById('addForm').querySelector('.name');
-    const acHolder = document.getElementById('nameAutocomplete');
-    const groupInput = document.getElementById('addForm').querySelector('.group');
-    const regionSelect = document.getElementById('addForm').querySelector('.region');
 
-    function closeAutocomplete(){ if(acHolder) acHolder.innerHTML = ''; }
-
-    let engSearchDebounce = null;
-    let engSearchToken = 0;
-
-    function renderNameDropdown(items){
-      acHolder.innerHTML = `<div class="floating-acc" style="background:#EDEDED;color:#333333;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.4);overflow:hidden;margin-top:2px;">
-        ${items.map((it,idx) => `<div data-acidx="${idx}" style="padding:8px 10px;font-size:13px;cursor:pointer;border-bottom:1px solid #C9C9C9;display:flex;justify-content:space-between;align-items:center;gap:8px;">
-          <span>${escapeHTML(it.name)}</span>
-          ${it.isLocal ? '' : `<span style="font-size:10px;color:#888;white-space:nowrap;">${escapeHTML(it.nationName || '해외')}${it.isEtf ? ' · ETF' : ''}</span>`}
-        </div>`).join('')}
-      </div>`;
-      acHolder.querySelectorAll('[data-acidx]').forEach(el => {
-        el.addEventListener('click', () => {
-          const it = items[parseInt(el.dataset.acidx, 10)];
-          nameInput.value = it.name;
-          if(it.isLocal && groupInput && it.group) groupInput.value = it.group;
-          if(regionSelect && it.region) regionSelect.value = it.region;
-          closeAutocomplete();
-        });
-      });
-    }
-
-    nameInput.addEventListener('input', () => {
-      const val = nameInput.value.trim();
-      if(engSearchDebounce){ clearTimeout(engSearchDebounce); engSearchDebounce = null; }
-
-      if(!val || /^[0-9]+$/.test(val)){
-        closeAutocomplete();
-        return;
-      }
-
-      const history = getKnownStockHistory();
-      const isHangul = /[가-힣]/.test(val);
-
-      if(isHangul){
-        const matches = Object.keys(history).filter(n => n.includes(val)).slice(0, 6);
-        if(matches.length === 0){ closeAutocomplete(); return; }
-        renderNameDropdown(matches.map(n => ({ name: n, isLocal: true, group: history[n].group, region: history[n].region })));
-        return;
-      }
-
-      // 영어(그 외) 입력: 1글자는 아무것도 안 함, 2글자부터 로컬 이력 + 네이버 검색을 함께 표시
-      if(val.length < 2){ closeAutocomplete(); return; }
-      const localMatches = Object.keys(history).filter(n => n.toLowerCase().includes(val.toLowerCase())).slice(0, 4);
-      const localItems = localMatches.map(n => ({ name: n, isLocal: true, group: history[n].group, region: history[n].region }));
-      if(localItems.length > 0) renderNameDropdown(localItems);
-      else closeAutocomplete();
-
-      const myToken = ++engSearchToken;
-      engSearchDebounce = setTimeout(async () => {
-        let apiItems = [];
-        try{ apiItems = await searchNaverAutocomplete(val); }catch(e){}
-        if(myToken !== engSearchToken) return; // 그 사이 사용자가 더 입력해서 이 결과는 낡음
-        const combined = [
-          ...localItems,
-          ...apiItems.slice(0, 6).map(it => ({ name: it.name, isLocal: false, region: it.region, nationName: it.nationName, isEtf: it.isEtf }))
-        ];
-        if(combined.length === 0){ closeAutocomplete(); return; }
-        renderNameDropdown(combined);
-      }, 300);
-    });
-
-    nameInput.addEventListener('keydown', async (e) => {
-      if(e.key !== 'Enter') return;
-      const val = nameInput.value.trim();
-      if(!/^[0-9]+$/.test(val)) return;
-      e.preventDefault();
-      closeAutocomplete();
-      const original = val;
-      nameInput.value = original + ' (검색 중...)';
-      nameInput.disabled = true;
-      try{
-        const found = await fetchStockNameByCode(original);
-        nameInput.value = (found && found.name) || original;
-        if(found && found.region && regionSelect) regionSelect.value = found.region;
-        if(!found) alert('종목명을 찾지 못했습니다. 직접 입력해주세요.');
-      }catch(err){
-        nameInput.value = original;
-        alert('종목명 검색에 실패했습니다. 직접 입력해주세요.');
-      }
-      nameInput.disabled = false;
-    });
-
-    document.addEventListener('click', (e) => {
-      if(!e.target.closest('#nameAutocomplete') && e.target !== nameInput) closeAutocomplete();
-    });
-  }
+  setupStockNameAutocomplete(
+    document.getElementById('addForm').querySelector('.name'),
+    document.getElementById('nameAutocomplete'),
+    document.getElementById('addForm').querySelector('.group'),
+    document.getElementById('addForm').querySelector('.region')
+  );
   panel.querySelectorAll('[data-del]').forEach(btn => {
     btn.addEventListener('click', () => deleteHolding(acc.id, btn.dataset.del));
   });
@@ -2129,6 +2137,12 @@ document.getElementById('editSaveBtn').addEventListener('click', saveEditModal);
 document.getElementById('editModal').addEventListener('click', (e) => {
   if(e.target.id === 'editModal') closeEditModal();
 });
+setupStockNameAutocomplete(
+  document.getElementById('editName'),
+  document.getElementById('editNameAutocomplete'),
+  document.getElementById('editGroup'),
+  document.getElementById('editRegion')
+);
 
 async function handleResetAllData(){
   if(!confirm('모든 계좌, 종목, 월별 자산, 마통 데이터를 삭제할까요?? 되돌릴 수 없습니다.')) return;
