@@ -1567,12 +1567,12 @@ function creditGaugeChartBlock(showAmountOverlay){
     { label:'마통사용', amount: totalUsed, color: CREDIT_USED_COLOR },
     { label:'잔여한도', amount: remain, color: CREDIT_REMAIN_COLOR }
   ];
-  return `<div class="chart-box" style="grid-column:1/-1;max-width:800px;margin:0 auto;">
+  return `<div class="chart-box" style="grid-column:1/-1;max-width:800px;margin:0 auto;${showAmountOverlay ? 'margin-bottom:-16px;' : ''}">
     ${creditBarSVG(gaugeData, 800, 22, showAmountOverlay ? Math.floor(totalUsed/10000).toLocaleString() : null)}
-    <div class="legend" style="flex-direction:row;flex-wrap:wrap;justify-content:center;gap:14px 20px;">
+    ${showAmountOverlay ? '' : `<div class="legend" style="flex-direction:row;flex-wrap:wrap;justify-content:center;gap:14px 20px;">
       <div class="legend-item" style="gap:5px;"><span class="swatch" style="background:${CREDIT_USED_COLOR}"></span><span class="legend-name">마통사용</span><span class="legend-pct num" style="margin-left:2px;">${usedPct.toFixed(1)}<span class="pct-sign">%</span></span></div>
       <div class="legend-item" style="gap:5px;"><span class="swatch" style="background:${CREDIT_REMAIN_COLOR}"></span><span class="legend-name">잔여한도</span><span class="legend-pct num" style="margin-left:2px;">${remainPct.toFixed(1)}<span class="pct-sign">%</span></span></div>
-    </div>
+    </div>`}
   </div>`;
 }
 
@@ -1803,15 +1803,17 @@ function renderPanel(){
       _.flatMap(state.accounts, a => a.holdings.filter(h => h.region === 'overseas').map(h => ({ ...h, investTypeLabel: (a.accountType||'직투') === '직투' ? '직투' : 'ETF/펀드' }))),
       'investTypeLabel'
     ) : [];
+    const cashTotal = _.sumBy(holdings.filter(isCashHolding), 'amount');
 
     panel.innerHTML = `
-      <div class="account-header" style="justify-content:center;">
+      <div class="account-header" style="justify-content:center;flex-direction:column;gap:4px;">
         <span class="total-badge">평가액<span class="num">${total.toLocaleString()}원</span></span>
+        <span class="total-badge">현금<span class="num">${cashTotal.toLocaleString()}원</span></span>
       </div>
       ${subTabsHtml}
       <div class="charts">
-        ${chartBlock('종목별 비중', byStock, 'stock')}
         ${sectorChartBlock(holdings)}
+        ${chartBlock('종목별 비중', byStock, 'stock')}
         ${(isDomestic && subType === '전체') ? chartBlock('계좌유형 비중', byAccountType, 'accountType') : ''}
         ${(!isDomestic && subType === '전체') ? chartBlock('직투/ETF 비중', byInvestType, 'accountType') : ''}
         ${stockDetailButtonBlock(holdings)}
@@ -1840,10 +1842,12 @@ function renderPanel(){
     const totalCreditUsed = _.sumBy(state.creditLines, 'used');
     const currentLabel = currentMonthLabel();
     const thisMonthSnap = state.snapshots.find(s => s.label === currentLabel) || (state.snapshots.length ? state.snapshots[state.snapshots.length-1] : null);
+    const cashTotalAll = _.sumBy(allHoldings.filter(isCashHolding), 'amount');
 
     panel.innerHTML = `
       <div class="account-header" style="justify-content:center;flex-direction:column;gap:4px;">
         <span class="total-badge">평가액<span class="num">${grandTotal.toLocaleString()}원</span></span>
+        <span class="total-badge">현금<span class="num">${cashTotalAll.toLocaleString()}원</span></span>
         ${thisMonthSnap ? `<div style="position:relative;margin-top:8px;"><button class="btn-memo" data-memosnap="${thisMonthSnap.id}">메모</button><div id="snap-memo-slot-${thisMonthSnap.id}"></div></div>` : ''}
       </div>
       <div class="charts">
