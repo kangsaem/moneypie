@@ -1549,7 +1549,7 @@ function toggleStockDetailAccordion(){
   const byStock = reorderCashFirst(computeWeights(totalStockDetailHoldings, 'name'));
   const rows = byStock.map(d => {
     const name = d.label === '현금' ? '현금' : escapeHTML(d.label);
-    return `<div style="display:flex;justify-content:space-between;gap:8px;padding:4px 0;font-size:12px;color:#333333;border-bottom:1px solid #C9C9C9;"><span>${name}</span><span class="num">${d.amount.toLocaleString()}원</span></div>`;
+    return `<div style="display:flex;justify-content:space-between;gap:8px;padding:4px 0;font-size:12px;color:#333333;border-bottom:1px solid #C9C9C9;"><span>${name}</span><span class="num">${d.amount.toLocaleString()}</span></div>`;
   }).join('');
   slot.innerHTML = `<div data-stockdetailclose style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:999;"></div>
   <div class="floating-acc" style="background:#EDEDED;color:#333333;border-radius:8px;padding:12px 16px;text-align:left;box-sizing:border-box;width:260px;max-height:70vh;overflow-y:auto;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;box-shadow:0 8px 24px rgba(0,0,0,0.5);">
@@ -1736,7 +1736,7 @@ function accountTypeBarChartBlock(){
   const legendHtml = data.map((d,i) => `<div class="legend-item" style="gap:5px;"><span class="swatch" style="background:${rankColor(d.label, i, data.length, 'accountType')}"></span><span class="legend-name">${escapeHTML(d.label)}</span><span class="legend-pct num" style="margin-left:2px;">${d.pct.toFixed(1)}<span class="pct-sign">%</span></span></div>`).join('');
   return `<div class="chart-box" style="grid-column:1/-1;max-width:800px;margin:0 auto;">
     ${stackedBarSVG(data, 800, 22, 'accountType')}
-    <div class="legend" style="flex-direction:row;flex-wrap:wrap;justify-content:center;gap:14px 20px;">${legendHtml}</div>
+    <div class="legend" style="flex-direction:row;flex-wrap:wrap;justify-content:center;gap:6px 20px;">${legendHtml}</div>
   </div>`;
 }
 
