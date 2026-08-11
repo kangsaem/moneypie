@@ -1001,6 +1001,7 @@ function chartBlock(title, data, type){
 
 let sectorAccordionHoldings = [];
 let sectorAccordionOpenIdx = null;
+let sectorAccordionShowRegionBar = true;
 
 function accordionRowHTML(label, pct){
   const name = label === '현금' ? '현금' : escapeHTML(label);
@@ -1044,7 +1045,7 @@ function bindSectorAccordionHandlers(){
       }
       const holdings = sectorAccordionHoldings.filter(h => h.group === label);
       const regionBreakdown = computeWeights(holdings, mergedRegionLabelFor);
-      const regionBarHtml = regionBreakdown.length > 0
+      const regionBarHtml = (sectorAccordionShowRegionBar && regionBreakdown.length > 0)
         ? `<div style="margin-bottom:8px;"><div style="border-radius:4px;overflow:hidden;">${stackedBarSVG(regionBreakdown, 220, 14, 'region')}</div></div>`
         : '';
       const breakdown = reorderCashFirst(computeWeights(holdings, 'name'));
@@ -1541,7 +1542,7 @@ function creditBarSVG(data, width, height, overlayLabel){
     const tx = Math.max(4, usedWidth - 6);
     const fontSize = Math.max(10, height - 4);
     const textY = height/2 + fontSize*0.35;
-    overlayText = `<text x="${tx.toFixed(1)}" y="${textY.toFixed(1)}" font-size="${fontSize}" font-weight="900" fill="#fff" text-anchor="end">${escapeHTML(overlayLabel)}</text>`;
+    overlayText = `<text x="${tx.toFixed(1)}" y="${textY.toFixed(1)}" font-size="${fontSize}" font-weight="500" fill="#FBD9E4" text-anchor="end">${escapeHTML(overlayLabel)}</text>`;
   }
   return `<svg width="100%" height="${height}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" style="display:block;border-radius:4px;overflow:hidden;">${bars}${grid}${overlayText}</svg>`;
 }
@@ -1812,6 +1813,7 @@ function renderPanel(){
       </div>
       ${subTabsHtml}
       <div class="charts">
+        ${(sectorAccordionShowRegionBar = false, '')}
         ${sectorChartBlock(holdings)}
         ${chartBlock('종목별 비중', byStock, 'stock')}
         ${(isDomestic && subType === '전체') ? chartBlock('계좌유형 비중', byAccountType, 'accountType') : ''}
@@ -1851,6 +1853,7 @@ function renderPanel(){
         ${thisMonthSnap ? `<div style="position:relative;margin-top:8px;"><button class="btn-memo" data-memosnap="${thisMonthSnap.id}">메모</button><div id="snap-memo-slot-${thisMonthSnap.id}"></div></div>` : ''}
       </div>
       <div class="charts">
+        ${(sectorAccordionShowRegionBar = true, '')}
         ${state.creditLines.length > 0 ? creditGaugeChartBlock(true) : ''}
         ${accountTypeBarChartBlock()}
         ${sectorChartBlock(allHoldings)}
@@ -1898,6 +1901,7 @@ function renderPanel(){
     </form>
     <div style="overflow-x:auto;">${holdingsTable(acc.holdings, acc.id, true)}</div>
     <div class="charts">
+      ${(sectorAccordionShowRegionBar = true, '')}
       ${chartBlock('종목별 비중', byStock, 'stock')}
       ${sectorChartBlock(acc.holdings)}
       ${regionChartBlock(acc.holdings)}
