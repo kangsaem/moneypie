@@ -1047,7 +1047,7 @@ function bindSectorAccordionHandlers(){
       const regionLabelFn = (label === '현금') ? regionLabelFor : mergedRegionLabelFor;
       const regionBreakdown = computeWeights(holdings, regionLabelFn);
       const regionBarHtml = (sectorAccordionShowRegionBar && regionBreakdown.length > 0)
-        ? `<div style="margin-bottom:8px;"><div style="border-radius:4px;overflow:hidden;">${stackedBarSVG(regionBreakdown, 220, 14, 'region')}</div></div>`
+        ? `<div style="margin-bottom:8px;"><div style="border-radius:4px;overflow:hidden;">${greenBarSVG(regionBreakdown, 220, 14)}</div></div>`
         : '';
       const breakdown = reorderCashFirst(computeWeights(holdings, 'name'));
       const rows = breakdown.map(d => accordionRowHTML(d.label, d.pct)).join('');
@@ -1266,6 +1266,25 @@ function stackedBarSVG(data, width, height, type){
     const rank = d.rank !== undefined ? d.rank : i;
     const rankCount = d.rankCount !== undefined ? d.rankCount : data.length;
     const rect = `<rect x="${x.toFixed(1)}" y="0" width="${Math.max(w,0).toFixed(1)}" height="${height}" fill="${rankColor(d.label, rank, rankCount, type)}"><title>${escapeHTML(d.label)} ${d.pct.toFixed(1)}%</title></rect>`;
+    x += w;
+    return rect;
+  }).join('');
+  let grid = '';
+  for(let i=1; i<10; i++){
+    const gx = (width*i/10).toFixed(1);
+    grid += `<line x1="${gx}" y1="0" x2="${gx}" y2="${height}" stroke="rgba(255,255,255,0.28)" stroke-width="0.5"/>`;
+  }
+  return `<svg width="100%" height="${height}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" style="display:block;border-radius:4px;overflow:hidden;">${bars}${grid}</svg>`;
+}
+
+function greenBarSVG(data, width, height){
+  const total = _.sumBy(data, 'amount') || 1;
+  let x = 0;
+  const bars = data.map((d,i) => {
+    const w = (d.amount/total) * width;
+    const t = data.length > 1 ? i/(data.length-1) : 0;
+    const color = lerpColor(REGION_STRONG, REGION_LIGHT, t);
+    const rect = `<rect x="${x.toFixed(1)}" y="0" width="${Math.max(w,0).toFixed(1)}" height="${height}" fill="${color}"><title>${escapeHTML(d.label)} ${d.pct.toFixed(1)}%</title></rect>`;
     x += w;
     return rect;
   }).join('');
@@ -1816,9 +1835,9 @@ function renderPanel(){
       <div class="charts">
         ${(sectorAccordionShowRegionBar = false, '')}
         ${sectorChartBlock(holdings)}
-        ${chartBlock('종목별 비중', byStock, 'stock')}
         ${(isDomestic && subType === '전체') ? chartBlock('계좌유형 비중', byAccountType, 'accountType') : ''}
         ${(!isDomestic && subType === '전체') ? chartBlock('직투/ETF 비중', byInvestType, 'accountType') : ''}
+        ${chartBlock('종목별 비중', byStock, 'stock')}
         ${stockDetailButtonBlock(holdings)}
       </div>
     `;
@@ -1903,9 +1922,9 @@ function renderPanel(){
     <div style="overflow-x:auto;">${holdingsTable(acc.holdings, acc.id, true)}</div>
     <div class="charts">
       ${(sectorAccordionShowRegionBar = true, '')}
-      ${chartBlock('종목별 비중', byStock, 'stock')}
       ${sectorChartBlock(acc.holdings)}
       ${regionChartBlock(acc.holdings)}
+      ${chartBlock('종목별 비중', byStock, 'stock')}
     </div>
   `;
 
