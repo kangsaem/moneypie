@@ -1044,7 +1044,8 @@ function bindSectorAccordionHandlers(){
         return;
       }
       const holdings = sectorAccordionHoldings.filter(h => h.group === label);
-      const regionBreakdown = computeWeights(holdings, mergedRegionLabelFor);
+      const regionLabelFn = (label === '현금') ? regionLabelFor : mergedRegionLabelFor;
+      const regionBreakdown = computeWeights(holdings, regionLabelFn);
       const regionBarHtml = (sectorAccordionShowRegionBar && regionBreakdown.length > 0)
         ? `<div style="margin-bottom:8px;"><div style="border-radius:4px;overflow:hidden;">${stackedBarSVG(regionBreakdown, 220, 14, 'region')}</div></div>`
         : '';
