@@ -1016,8 +1016,10 @@ function sectorChartBlock(holdings){
     const rank = d.rank !== undefined ? d.rank : i;
     const rankCount = d.rankCount !== undefined ? d.rankCount : ordered.length;
     const color = rankColor(d.label, rank, rankCount, 'group');
+    const isCashLabel = d.label === '현금' || d.label === '현금-국내' || d.label === '현금-해외' || d.label === '국내현금' || d.label === '해외현금';
+    const cashStyle = isCashLabel ? 'color:#F0DA8C;font-weight:700;' : '';
     return `<div style="position:relative;">
-      <div class="legend-item" data-sector-idx="${i}" data-sector-label="${escapeHTML(d.label)}" style="cursor:pointer;"><span class="swatch" style="background:${color}"></span><span class="legend-name">${escapeHTML(d.label)}</span><span class="legend-pct num">${d.pct.toFixed(1)}<span class="pct-sign">%</span></span></div>
+      <div class="legend-item" data-sector-idx="${i}" data-sector-label="${escapeHTML(d.label)}" style="cursor:pointer;"><span class="swatch" style="background:${color}"></span><span class="legend-name" style="${cashStyle}">${escapeHTML(d.label)}</span><span class="legend-pct num" style="${cashStyle}">${d.pct.toFixed(1)}<span class="pct-sign">%</span></span></div>
       <div id="sector-slot-${i}"></div>
     </div>`;
   }).join('');
@@ -1041,9 +1043,14 @@ function bindSectorAccordionHandlers(){
         return;
       }
       const holdings = sectorAccordionHoldings.filter(h => h.group === label);
+      const regionBreakdown = computeWeights(holdings, mergedRegionLabelFor);
+      const regionBarHtml = regionBreakdown.length > 0
+        ? `<div style="margin-bottom:8px;"><div style="border-radius:4px;overflow:hidden;">${stackedBarSVG(regionBreakdown, 220, 14, 'region')}</div></div>`
+        : '';
       const breakdown = reorderCashFirst(computeWeights(holdings, 'name'));
       const rows = breakdown.map(d => accordionRowHTML(d.label, d.pct)).join('');
       slot.innerHTML = `<div class="floating-acc" style="background:#EDEDED;color:#333333;border-radius:6px;padding:8px 12px;text-align:left;box-sizing:border-box;width:240px;position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:4px;z-index:5;box-shadow:0 4px 12px rgba(0,0,0,0.4);">
+        ${regionBarHtml}
         ${rows || '<div class="empty">데이터 없음</div>'}
       </div>`;
       sectorAccordionOpenIdx = idx;
@@ -1068,8 +1075,10 @@ function regionChartBlock(holdings){
     const rank = d.rank !== undefined ? d.rank : i;
     const rankCount = d.rankCount !== undefined ? d.rankCount : ordered.length;
     const color = rankColor(d.label, rank, rankCount, 'region');
+    const isCashLabel = d.label === '현금' || d.label === '현금-국내' || d.label === '현금-해외' || d.label === '국내현금' || d.label === '해외현금';
+    const cashStyle = isCashLabel ? 'color:#F0DA8C;font-weight:700;' : '';
     return `<div style="position:relative;">
-      <div class="legend-item" data-region-idx="${i}" data-region-label="${escapeHTML(d.label)}" style="cursor:pointer;"><span class="swatch" style="background:${color}"></span><span class="legend-name">${escapeHTML(d.label)}</span><span class="legend-pct num">${d.pct.toFixed(1)}<span class="pct-sign">%</span></span></div>
+      <div class="legend-item" data-region-idx="${i}" data-region-label="${escapeHTML(d.label)}" style="cursor:pointer;"><span class="swatch" style="background:${color}"></span><span class="legend-name" style="${cashStyle}">${escapeHTML(d.label)}</span><span class="legend-pct num" style="${cashStyle}">${d.pct.toFixed(1)}<span class="pct-sign">%</span></span></div>
       <div id="region-slot-${i}"></div>
     </div>`;
   }).join('');
@@ -1326,6 +1335,37 @@ function bindTrendAccordionHandlers(){
   });
 }
 
+let totalStockDetailHoldings = [];
+let totalStockDetailOpen = false;
+
+function stockDetailButtonBlock(holdings){
+  totalStockDetailHoldings = holdings;
+  totalStockDetailOpen = false;
+  return `<div style="grid-column:1/-1;text-align:center;margin-top:4px;">
+    <button class="btn-memo" id="stock-detail-btn">종목별 금액</button>
+    <div id="stock-detail-slot"></div>
+  </div>`;
+}
+
+function toggleStockDetailAccordion(){
+  const slot = document.getElementById('stock-detail-slot');
+  if(!slot) return;
+  if(totalStockDetailOpen){
+    slot.innerHTML = '';
+    totalStockDetailOpen = false;
+    return;
+  }
+  const byStock = reorderCashFirst(computeWeights(totalStockDetailHoldings, 'name'));
+  const rows = byStock.map(d => accordionRowHTML(d.label, d.pct)).join('');
+  slot.innerHTML = `<div data-stockdetailclose style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:999;"></div>
+  <div class="floating-acc" style="background:#EDEDED;color:#333333;border-radius:8px;padding:12px 16px;text-align:left;box-sizing:border-box;width:260px;max-height:70vh;overflow-y:auto;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;box-shadow:0 8px 24px rgba(0,0,0,0.5);">
+    ${rows || '<div class="empty">데이터 없음</div>'}
+  </div>`;
+  totalStockDetailOpen = true;
+  const backdrop = slot.querySelector('[data-stockdetailclose]');
+  if(backdrop) backdrop.addEventListener('click', toggleStockDetailAccordion);
+}
+
 function toggleTrendAccordion(rowId){
   const slot = document.getElementById('trend-slot-' + rowId);
   if(!slot) return;
@@ -1387,7 +1427,7 @@ function renderTabs(){
   html += `<div class="tab total ${state.activeId==='__creditLines__'?'active':''}" data-tab="__creditLines__" style="color:#B85450;">마통</div>`;
   html += `<div class="tab total ${state.activeId==='__domestic__'?'active':''}" data-tab="__domestic__">국내</div>`;
   html += `<div class="tab total ${state.activeId==='__overseas__'?'active':''}" data-tab="__overseas__">해외</div>`;
-  html += `<div class="tab total ${state.activeId==='__total__'?'active':''}" data-tab="__total__">전체</div>`;
+  html += `<div class="tab total ${state.activeId==='__total__'?'active':''}" data-tab="__total__">총합</div>`;
   html += `<div class="tab total ${state.activeId==='__history__'?'active':''}" data-tab="__history__">월별</div>`;
   html += `<div class="tab-add ${state.activeId==='__snapshots__'?'active':''}" data-tab="__snapshots__">관리</div>`;
   html += `<div class="tab-add" id="addAccountBtn">+ 계좌 추가</div>`;
@@ -1479,7 +1519,7 @@ function creditGaugeSVG(data, size){
   return `<div class="donut-wrap"><svg width="100%" height="100%" viewBox="0 0 ${size} ${size}" style="display:block;"><g transform="translate(${size},0) scale(-1,1)">${paths}</g></svg></div>`;
 }
 
-function creditBarSVG(data, width, height){
+function creditBarSVG(data, width, height, overlayLabel){
   const total = _.sumBy(data, 'amount') || 1;
   let x = 0, bars = '';
   data.forEach(d => {
@@ -1492,7 +1532,13 @@ function creditBarSVG(data, width, height){
     const gx = (width*i/10).toFixed(1);
     grid += `<line x1="${gx}" y1="0" x2="${gx}" y2="${height}" stroke="rgba(255,255,255,0.28)" stroke-width="0.5"/>`;
   }
-  return `<svg width="100%" height="${height}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" style="display:block;border-radius:4px;overflow:hidden;">${bars}${grid}</svg>`;
+  let overlayText = '';
+  if(overlayLabel){
+    const usedWidth = (data[0].amount/total) * width;
+    const tx = Math.max(4, usedWidth - 6);
+    overlayText = `<text x="${tx.toFixed(1)}" y="${height/2}" font-size="11" font-weight="700" fill="#fff" text-anchor="end" dominant-baseline="middle">${escapeHTML(overlayLabel)}</text>`;
+  }
+  return `<svg width="100%" height="${height}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" style="display:block;border-radius:4px;overflow:hidden;">${bars}${grid}${overlayText}</svg>`;
 }
 
 function accountTypeBarChartBlock(){
@@ -1506,7 +1552,7 @@ function accountTypeBarChartBlock(){
   </div>`;
 }
 
-function creditGaugeChartBlock(){
+function creditGaugeChartBlock(showAmountOverlay){
   const totalLimit = _.sumBy(state.creditLines, 'limit');
   const totalUsed = _.sumBy(state.creditLines, 'used');
   const remain = Math.max(totalLimit - totalUsed, 0);
@@ -1517,7 +1563,7 @@ function creditGaugeChartBlock(){
     { label:'잔여한도', amount: remain, color: CREDIT_REMAIN_COLOR }
   ];
   return `<div class="chart-box" style="grid-column:1/-1;max-width:800px;margin:0 auto;">
-    ${creditBarSVG(gaugeData, 800, 22)}
+    ${creditBarSVG(gaugeData, 800, 22, showAmountOverlay ? (totalUsed.toLocaleString()+'원') : null)}
     <div class="legend" style="flex-direction:row;flex-wrap:wrap;justify-content:center;gap:14px 20px;">
       <div class="legend-item" style="gap:5px;"><span class="swatch" style="background:${CREDIT_USED_COLOR}"></span><span class="legend-name">사용</span><span class="legend-pct num" style="margin-left:2px;">${usedPct.toFixed(1)}<span class="pct-sign">%</span></span></div>
       <div class="legend-item" style="gap:5px;"><span class="swatch" style="background:${CREDIT_REMAIN_COLOR}"></span><span class="legend-name">잔여한도</span><span class="legend-pct num" style="margin-left:2px;">${remainPct.toFixed(1)}<span class="pct-sign">%</span></span></div>
@@ -1791,16 +1837,15 @@ function renderPanel(){
     panel.innerHTML = `
       <div class="account-header" style="justify-content:center;flex-direction:column;gap:4px;">
         <span class="total-badge">평가액<span class="num">${grandTotal.toLocaleString()}원</span></span>
-        ${totalCreditUsed > 0 ? `<span class="total-badge">마통사용<span class="num" style="color:${CREDIT_USED_COLOR};">${totalCreditUsed.toLocaleString()}원</span></span>` : ''}
         ${thisMonthSnap ? `<div style="position:relative;margin-top:8px;"><button class="btn-memo" data-memosnap="${thisMonthSnap.id}">메모</button><div id="snap-memo-slot-${thisMonthSnap.id}"></div></div>` : ''}
       </div>
       <div style="max-width:520px;margin:0 auto;overflow-x:auto;">${holdingsTable(allHoldings, null, false, true, true, true)}</div>
       <div class="charts">
-        ${chartBlock('종목별 비중 (전체)', byStock, 'stock')}
+        ${state.creditLines.length > 0 ? creditGaugeChartBlock(true) : ''}
+        ${accountTypeBarChartBlock()}
         ${sectorChartBlock(allHoldings)}
         ${regionChartBlock(allHoldings)}
-        ${accountTypeBarChartBlock()}
-        ${state.creditLines.length > 0 ? creditGaugeChartBlock() : ''}
+        ${stockDetailButtonBlock(allHoldings)}
       </div>
     `;
     bindSectorAccordionHandlers();
@@ -1808,6 +1853,8 @@ function renderPanel(){
     panel.querySelectorAll('[data-memosnap]').forEach(btn => {
       btn.addEventListener('click', () => toggleMemoAccordion(btn.dataset.memosnap));
     });
+    const stockDetailBtn = document.getElementById('stock-detail-btn');
+    if(stockDetailBtn) stockDetailBtn.addEventListener('click', toggleStockDetailAccordion);
     return;
   }
 
