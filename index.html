@@ -832,8 +832,12 @@ function getKnownStockHistory(){
   return map;
 }
 
-async function fetchStockNameByCode(code){
-  const targetUrl = `https://m.stock.naver.com/front-api/search/autoComplete?query=${encodeURIComponent(code)}&target=stock,index,marketindicator,coin,ipo&_=${Date.now()}`;
+function regionFromTypeName(typeName){
+  return (typeName === '코스피' || typeName === '코스닥') ? 'domestic' : 'overseas';
+}
+
+async function searchNaverAutocomplete(query){
+  const targetUrl = `https://m.stock.naver.com/front-api/search/autoComplete?query=${encodeURIComponent(query)}&target=stock,index,marketindicator,coin,ipo&_=${Date.now()}`;
   let res;
   try{
     res = await fetchWithTimeout(targetUrl, { cache: 'no-store' }, 3000);
@@ -842,22 +846,25 @@ async function fetchStockNameByCode(code){
     res = await fetchWithTimeout(`https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`, { cache: 'no-store' }, 5000);
   }
   const data = await res.json();
-  let name = null;
-  try{
-    if(data.result && Array.isArray(data.result.items) && data.result.items.length > 0){
-      const match = data.result.items.find(it => it.code === code) || data.result.items[0];
-      name = match && match.name;
-    }
-  }catch(e){}
-  if(!name){
-    // 혹시 응답 형태가 살짝 다를 경우를 대비한 최후 수단
-    try{
-      const text = JSON.stringify(data);
-      const m = text.match(/[가-힣][가-힣0-9A-Za-z&()\.\- ]{1,30}/);
-      if(m) name = m[0].trim();
-    }catch(e){}
+  if(data.result && Array.isArray(data.result.items)){
+    return data.result.items.map(it => ({
+      code: it.code,
+      name: it.name,
+      typeName: it.typeName,
+      nationName: it.nationName,
+      isEtf: !!it.isEtf,
+      region: regionFromTypeName(it.typeName)
+    }));
   }
-  return name || null;
+  return [];
+}
+
+async function fetchStockNameByCode(code){
+  let items = [];
+  try{ items = await searchNaverAutocomplete(code); }catch(e){}
+  if(items.length === 0) return null;
+  const match = items.find(it => it.code === code) || items[0];
+  return match || null;
 }
 
 function addHolding(accId, name, group, amount, region){
@@ -2018,30 +2025,65 @@ function renderPanel(){
 
     function closeAutocomplete(){ if(acHolder) acHolder.innerHTML = ''; }
 
+    let engSearchDebounce = null;
+    let engSearchToken = 0;
+
+    function renderNameDropdown(items){
+      acHolder.innerHTML = `<div class="floating-acc" style="background:#EDEDED;color:#333333;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.4);overflow:hidden;margin-top:2px;">
+        ${items.map((it,idx) => `<div data-acidx="${idx}" style="padding:8px 10px;font-size:13px;cursor:pointer;border-bottom:1px solid #C9C9C9;display:flex;justify-content:space-between;align-items:center;gap:8px;">
+          <span>${escapeHTML(it.name)}</span>
+          ${it.isLocal ? '' : `<span style="font-size:10px;color:#888;white-space:nowrap;">${escapeHTML(it.nationName || '해외')}${it.isEtf ? ' · ETF' : ''}</span>`}
+        </div>`).join('')}
+      </div>`;
+      acHolder.querySelectorAll('[data-acidx]').forEach(el => {
+        el.addEventListener('click', () => {
+          const it = items[parseInt(el.dataset.acidx, 10)];
+          nameInput.value = it.name;
+          if(it.isLocal && groupInput && it.group) groupInput.value = it.group;
+          if(regionSelect && it.region) regionSelect.value = it.region;
+          closeAutocomplete();
+        });
+      });
+    }
+
     nameInput.addEventListener('input', () => {
       const val = nameInput.value.trim();
+      if(engSearchDebounce){ clearTimeout(engSearchDebounce); engSearchDebounce = null; }
+
       if(!val || /^[0-9]+$/.test(val)){
         closeAutocomplete();
         return;
       }
+
       const history = getKnownStockHistory();
-      const matches = Object.keys(history).filter(n => n.includes(val)).slice(0, 6);
-      if(matches.length === 0){ closeAutocomplete(); return; }
-      acHolder.innerHTML = `<div class="floating-acc" style="background:#EDEDED;color:#333333;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.4);overflow:hidden;margin-top:2px;">
-        ${matches.map(n => `<div data-acname="${escapeHTML(n)}" style="padding:8px 10px;font-size:13px;cursor:pointer;border-bottom:1px solid #C9C9C9;">${escapeHTML(n)}</div>`).join('')}
-      </div>`;
-      acHolder.querySelectorAll('[data-acname]').forEach(el => {
-        el.addEventListener('click', () => {
-          const chosen = el.dataset.acname;
-          nameInput.value = chosen;
-          const info = history[chosen];
-          if(info){
-            if(groupInput && info.group) groupInput.value = info.group;
-            if(regionSelect && info.region) regionSelect.value = info.region;
-          }
-          closeAutocomplete();
-        });
-      });
+      const isHangul = /[가-힣]/.test(val);
+
+      if(isHangul){
+        const matches = Object.keys(history).filter(n => n.includes(val)).slice(0, 6);
+        if(matches.length === 0){ closeAutocomplete(); return; }
+        renderNameDropdown(matches.map(n => ({ name: n, isLocal: true, group: history[n].group, region: history[n].region })));
+        return;
+      }
+
+      // 영어(그 외) 입력: 1글자는 아무것도 안 함, 2글자부터 로컬 이력 + 네이버 검색을 함께 표시
+      if(val.length < 2){ closeAutocomplete(); return; }
+      const localMatches = Object.keys(history).filter(n => n.toLowerCase().includes(val.toLowerCase())).slice(0, 4);
+      const localItems = localMatches.map(n => ({ name: n, isLocal: true, group: history[n].group, region: history[n].region }));
+      if(localItems.length > 0) renderNameDropdown(localItems);
+      else closeAutocomplete();
+
+      const myToken = ++engSearchToken;
+      engSearchDebounce = setTimeout(async () => {
+        let apiItems = [];
+        try{ apiItems = await searchNaverAutocomplete(val); }catch(e){}
+        if(myToken !== engSearchToken) return; // 그 사이 사용자가 더 입력해서 이 결과는 낡음
+        const combined = [
+          ...localItems,
+          ...apiItems.slice(0, 6).map(it => ({ name: it.name, isLocal: false, region: it.region, nationName: it.nationName, isEtf: it.isEtf }))
+        ];
+        if(combined.length === 0){ closeAutocomplete(); return; }
+        renderNameDropdown(combined);
+      }, 300);
     });
 
     nameInput.addEventListener('keydown', async (e) => {
@@ -2055,7 +2097,8 @@ function renderPanel(){
       nameInput.disabled = true;
       try{
         const found = await fetchStockNameByCode(original);
-        nameInput.value = found || original;
+        nameInput.value = (found && found.name) || original;
+        if(found && found.region && regionSelect) regionSelect.value = found.region;
         if(!found) alert('종목명을 찾지 못했습니다. 직접 입력해주세요.');
       }catch(err){
         nameInput.value = original;
