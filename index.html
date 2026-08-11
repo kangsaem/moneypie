@@ -1047,7 +1047,7 @@ function bindSectorAccordionHandlers(){
       const regionLabelFn = (label === '현금') ? regionLabelFor : mergedRegionLabelFor;
       const regionBreakdown = computeWeights(holdings, regionLabelFn);
       const regionBarHtml = (sectorAccordionShowRegionBar && regionBreakdown.length > 0)
-        ? `<div style="margin-bottom:8px;"><div style="border-radius:4px;overflow:hidden;">${greenBarSVG(regionBreakdown, 220, 14)}</div></div>`
+        ? `<div style="margin-bottom:8px;"><div style="border-radius:4px;overflow:hidden;position:relative;">${greenBarWithLabelHTML(regionBreakdown, 220, 14)}</div></div>`
         : '';
       const breakdown = reorderCashFirst(computeWeights(holdings, 'name'));
       const rows = breakdown.map(d => accordionRowHTML(d.label, d.pct)).join('');
@@ -1277,13 +1277,14 @@ function stackedBarSVG(data, width, height, type){
   return `<svg width="100%" height="${height}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" style="display:block;border-radius:4px;overflow:hidden;">${bars}${grid}</svg>`;
 }
 
+const REGION_BAR_FIXED_COLOR = { '국내': REGION_STRONG, '해외': REGION_LIGHT, '국내현금': REGION_STRONG, '해외현금': REGION_LIGHT };
+
 function greenBarSVG(data, width, height){
   const total = _.sumBy(data, 'amount') || 1;
   let x = 0;
-  const bars = data.map((d,i) => {
+  const bars = data.map((d) => {
     const w = (d.amount/total) * width;
-    const t = data.length > 1 ? i/(data.length-1) : 0;
-    const color = lerpColor(REGION_STRONG, REGION_LIGHT, t);
+    const color = REGION_BAR_FIXED_COLOR[d.label] || REGION_LIGHT;
     const rect = `<rect x="${x.toFixed(1)}" y="0" width="${Math.max(w,0).toFixed(1)}" height="${height}" fill="${color}"><title>${escapeHTML(d.label)} ${d.pct.toFixed(1)}%</title></rect>`;
     x += w;
     return rect;
@@ -1294,6 +1295,27 @@ function greenBarSVG(data, width, height){
     grid += `<line x1="${gx}" y1="0" x2="${gx}" y2="${height}" stroke="rgba(255,255,255,0.28)" stroke-width="0.5"/>`;
   }
   return `<svg width="100%" height="${height}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" style="display:block;border-radius:4px;overflow:hidden;">${bars}${grid}</svg>`;
+}
+
+function greenBarWithLabelHTML(data, width, height){
+  const total = _.sumBy(data, 'amount') || 1;
+  let xPct = 0;
+  let domesticSeg = null;
+  data.forEach(d => {
+    const wPct = (d.amount/total) * 100;
+    if((d.label === '국내' || d.label === '국내현금')){
+      domesticSeg = { xPct, wPct, pct: d.pct };
+    }
+    xPct += wPct;
+  });
+  const barSvg = greenBarSVG(data, width, height);
+  let overlay = '';
+  if(domesticSeg && domesticSeg.pct >= 10){
+    overlay = `<div style="position:absolute;top:0;left:${domesticSeg.xPct.toFixed(2)}%;width:${domesticSeg.wPct.toFixed(2)}%;height:${height}px;display:flex;align-items:center;justify-content:center;pointer-events:none;overflow:hidden;box-sizing:border-box;">
+      <span style="color:#fff;font-size:10px;font-weight:700;white-space:nowrap;">${domesticSeg.pct.toFixed(0)}%</span>
+    </div>`;
+  }
+  return `<div style="position:relative;">${barSvg}${overlay}</div>`;
 }
 
 let openTotalMemoId = null;
@@ -1543,7 +1565,7 @@ function creditGaugeSVG(data, size){
   return `<div class="donut-wrap"><svg width="100%" height="100%" viewBox="0 0 ${size} ${size}" style="display:block;"><g transform="translate(${size},0) scale(-1,1)">${paths}</g></svg></div>`;
 }
 
-function creditBarSVG(data, width, height, overlayLabel){
+function creditBarSVG(data, width, height){
   const total = _.sumBy(data, 'amount') || 1;
   let x = 0, bars = '';
   data.forEach(d => {
@@ -1556,15 +1578,7 @@ function creditBarSVG(data, width, height, overlayLabel){
     const gx = (width*i/10).toFixed(1);
     grid += `<line x1="${gx}" y1="0" x2="${gx}" y2="${height}" stroke="rgba(255,255,255,0.28)" stroke-width="0.5"/>`;
   }
-  let overlayText = '';
-  if(overlayLabel){
-    const usedWidth = (data[0].amount/total) * width;
-    const tx = Math.max(4, usedWidth - 6);
-    const fontSize = Math.max(10, height - 4);
-    const textY = height/2 + fontSize*0.35;
-    overlayText = `<text x="${tx.toFixed(1)}" y="${textY.toFixed(1)}" font-size="${fontSize}" font-weight="500" fill="#FBD9E4" text-anchor="end">${escapeHTML(overlayLabel)}</text>`;
-  }
-  return `<svg width="100%" height="${height}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" style="display:block;border-radius:4px;overflow:hidden;">${bars}${grid}${overlayText}</svg>`;
+  return `<svg width="100%" height="${height}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" style="display:block;border-radius:4px;overflow:hidden;">${bars}${grid}</svg>`;
 }
 
 function accountTypeBarChartBlock(){
@@ -1588,8 +1602,12 @@ function creditGaugeChartBlock(showAmountOverlay){
     { label:'마통사용', amount: totalUsed, color: CREDIT_USED_COLOR },
     { label:'잔여한도', amount: remain, color: CREDIT_REMAIN_COLOR }
   ];
+  const overlayHtml = showAmountOverlay ? `<div style="position:absolute;top:0;left:0;width:${usedPct.toFixed(2)}%;height:22px;display:flex;align-items:center;justify-content:flex-end;padding-right:6px;box-sizing:border-box;overflow:hidden;pointer-events:none;"><span style="color:#FBD9E4;font-size:15px;font-weight:500;white-space:nowrap;">${Math.floor(totalUsed/10000).toLocaleString()}</span></div>` : '';
   return `<div class="chart-box" style="grid-column:1/-1;max-width:800px;margin:0 auto;${showAmountOverlay ? 'margin-bottom:-16px;' : ''}">
-    ${creditBarSVG(gaugeData, 800, 22, showAmountOverlay ? Math.floor(totalUsed/10000).toLocaleString() : null)}
+    <div style="position:relative;">
+      ${creditBarSVG(gaugeData, 800, 22)}
+      ${overlayHtml}
+    </div>
     ${showAmountOverlay ? '' : `<div class="legend" style="flex-direction:row;flex-wrap:wrap;justify-content:center;gap:14px 20px;">
       <div class="legend-item" style="gap:5px;"><span class="swatch" style="background:${CREDIT_USED_COLOR}"></span><span class="legend-name">마통사용</span><span class="legend-pct num" style="margin-left:2px;">${usedPct.toFixed(1)}<span class="pct-sign">%</span></span></div>
       <div class="legend-item" style="gap:5px;"><span class="swatch" style="background:${CREDIT_REMAIN_COLOR}"></span><span class="legend-name">잔여한도</span><span class="legend-pct num" style="margin-left:2px;">${remainPct.toFixed(1)}<span class="pct-sign">%</span></span></div>
