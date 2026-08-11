@@ -833,8 +833,7 @@ function getKnownStockHistory(){
 }
 
 async function fetchStockNameByCode(code){
-  const symbol = code + '.KS';
-  const targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=1d&interval=1d&_=${Date.now()}`;
+  const targetUrl = `https://ac.stock.naver.com/ac?q=${encodeURIComponent(code)}&target=stock,etf&st=111&_=${Date.now()}`;
   let res;
   try{
     res = await fetchWithTimeout(targetUrl, { cache: 'no-store' }, 3000);
@@ -843,10 +842,31 @@ async function fetchStockNameByCode(code){
     res = await fetchWithTimeout(`https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`, { cache: 'no-store' }, 5000);
   }
   const data = await res.json();
-  const result = data.chart && data.chart.result && data.chart.result[0];
-  if(!result) return null;
-  const meta = result.meta || {};
-  return meta.shortName || meta.longName || null;
+  let name = null;
+  // 정확한 응답 스키마가 불확실해서, 알려진 몇 가지 형태를 순서대로 시도
+  try{
+    if(Array.isArray(data.items) && Array.isArray(data.items[0]) && data.items[0][0]){
+      const first = data.items[0][0];
+      if(Array.isArray(first)) name = first[1] || first[0];
+      else if(first && first.name) name = first.name;
+    }
+  }catch(e){}
+  if(!name){
+    try{
+      if(data.result && Array.isArray(data.result.items) && data.result.items[0]){
+        name = data.result.items[0].name;
+      }
+    }catch(e){}
+  }
+  if(!name){
+    // 최후 수단: 응답 텍스트에서 한글이 포함된 첫 토큰을 이름으로 추정
+    try{
+      const text = JSON.stringify(data);
+      const m = text.match(/[가-힣][가-힣0-9A-Za-z&()\.\- ]{1,30}/);
+      if(m) name = m[0].trim();
+    }catch(e){}
+  }
+  return name || null;
 }
 
 function addHolding(accId, name, group, amount, region){
