@@ -833,7 +833,7 @@ function getKnownStockHistory(){
 }
 
 async function fetchStockNameByCode(code){
-  const targetUrl = `https://ac.stock.naver.com/ac?q=${encodeURIComponent(code)}&target=stock,etf&st=111&_=${Date.now()}`;
+  const targetUrl = `https://m.stock.naver.com/front-api/search/autoComplete?query=${encodeURIComponent(code)}&target=stock,index,marketindicator,coin,ipo&_=${Date.now()}`;
   let res;
   try{
     res = await fetchWithTimeout(targetUrl, { cache: 'no-store' }, 3000);
@@ -843,23 +843,14 @@ async function fetchStockNameByCode(code){
   }
   const data = await res.json();
   let name = null;
-  // 정확한 응답 스키마가 불확실해서, 알려진 몇 가지 형태를 순서대로 시도
   try{
-    if(Array.isArray(data.items) && Array.isArray(data.items[0]) && data.items[0][0]){
-      const first = data.items[0][0];
-      if(Array.isArray(first)) name = first[1] || first[0];
-      else if(first && first.name) name = first.name;
+    if(data.result && Array.isArray(data.result.items) && data.result.items.length > 0){
+      const match = data.result.items.find(it => it.code === code) || data.result.items[0];
+      name = match && match.name;
     }
   }catch(e){}
   if(!name){
-    try{
-      if(data.result && Array.isArray(data.result.items) && data.result.items[0]){
-        name = data.result.items[0].name;
-      }
-    }catch(e){}
-  }
-  if(!name){
-    // 최후 수단: 응답 텍스트에서 한글이 포함된 첫 토큰을 이름으로 추정
+    // 혹시 응답 형태가 살짝 다를 경우를 대비한 최후 수단
     try{
       const text = JSON.stringify(data);
       const m = text.match(/[가-힣][가-힣0-9A-Za-z&()\.\- ]{1,30}/);
