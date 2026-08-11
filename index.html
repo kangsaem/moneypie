@@ -1298,20 +1298,26 @@ function greenBarSVG(data, width, height){
 }
 
 function greenBarWithLabelHTML(data, width, height){
-  const total = _.sumBy(data, 'amount') || 1;
+  const isDomesticLabel = (label) => label === '국내' || label === '국내현금';
+  const ordered = data.slice().sort((a,b) => {
+    const aDom = isDomesticLabel(a.label) ? 0 : 1;
+    const bDom = isDomesticLabel(b.label) ? 0 : 1;
+    return aDom - bDom;
+  });
+  const total = _.sumBy(ordered, 'amount') || 1;
   let xPct = 0;
   let domesticSeg = null;
-  data.forEach(d => {
+  ordered.forEach(d => {
     const wPct = (d.amount/total) * 100;
-    if((d.label === '국내' || d.label === '국내현금')){
+    if(isDomesticLabel(d.label)){
       domesticSeg = { xPct, wPct, pct: d.pct };
     }
     xPct += wPct;
   });
-  const barSvg = greenBarSVG(data, width, height);
+  const barSvg = greenBarSVG(ordered, width, height);
   let overlay = '';
   if(domesticSeg && domesticSeg.pct >= 10){
-    overlay = `<div style="position:absolute;top:0;left:${domesticSeg.xPct.toFixed(2)}%;width:${domesticSeg.wPct.toFixed(2)}%;height:${height}px;display:flex;align-items:center;justify-content:center;pointer-events:none;overflow:hidden;box-sizing:border-box;">
+    overlay = `<div style="position:absolute;top:0;left:${domesticSeg.xPct.toFixed(2)}%;width:${domesticSeg.wPct.toFixed(2)}%;height:${height}px;display:flex;align-items:center;justify-content:flex-end;padding-right:4px;pointer-events:none;overflow:hidden;box-sizing:border-box;">
       <span style="color:#fff;font-size:10px;font-weight:700;white-space:nowrap;">${domesticSeg.pct.toFixed(0)}%</span>
     </div>`;
   }
