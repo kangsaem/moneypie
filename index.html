@@ -1342,7 +1342,7 @@ function stockDetailButtonBlock(holdings){
   totalStockDetailHoldings = holdings;
   totalStockDetailOpen = false;
   return `<div style="grid-column:1/-1;text-align:center;margin-top:4px;">
-    <button class="btn-memo" id="stock-detail-btn">종목별 금액</button>
+    <button class="btn-memo" id="stock-detail-btn">종목별 평가액</button>
     <div id="stock-detail-slot"></div>
   </div>`;
 }
@@ -1356,7 +1356,10 @@ function toggleStockDetailAccordion(){
     return;
   }
   const byStock = reorderCashFirst(computeWeights(totalStockDetailHoldings, 'name'));
-  const rows = byStock.map(d => accordionRowHTML(d.label, d.pct)).join('');
+  const rows = byStock.map(d => {
+    const name = d.label === '현금' ? '현금' : escapeHTML(d.label);
+    return `<div style="display:flex;justify-content:space-between;gap:8px;padding:4px 0;font-size:12px;color:#333333;border-bottom:1px solid #C9C9C9;"><span>${name}</span><span class="num">${d.amount.toLocaleString()}원</span></div>`;
+  }).join('');
   slot.innerHTML = `<div data-stockdetailclose style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:999;"></div>
   <div class="floating-acc" style="background:#EDEDED;color:#333333;border-radius:8px;padding:12px 16px;text-align:left;box-sizing:border-box;width:260px;max-height:70vh;overflow-y:auto;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;box-shadow:0 8px 24px rgba(0,0,0,0.5);">
     ${rows || '<div class="empty">데이터 없음</div>'}
@@ -1536,7 +1539,8 @@ function creditBarSVG(data, width, height, overlayLabel){
   if(overlayLabel){
     const usedWidth = (data[0].amount/total) * width;
     const tx = Math.max(4, usedWidth - 6);
-    overlayText = `<text x="${tx.toFixed(1)}" y="${height/2}" font-size="11" font-weight="700" fill="#fff" text-anchor="end" dominant-baseline="middle">${escapeHTML(overlayLabel)}</text>`;
+    const fontSize = Math.max(10, height - 4);
+    overlayText = `<text x="${tx.toFixed(1)}" y="${height/2}" font-size="${fontSize}" font-weight="900" fill="#fff" text-anchor="end" dominant-baseline="middle">${escapeHTML(overlayLabel)}</text>`;
   }
   return `<svg width="100%" height="${height}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" style="display:block;border-radius:4px;overflow:hidden;">${bars}${grid}${overlayText}</svg>`;
 }
@@ -1559,13 +1563,13 @@ function creditGaugeChartBlock(showAmountOverlay){
   const usedPct = totalLimit ? (totalUsed/totalLimit*100) : 0;
   const remainPct = totalLimit ? (remain/totalLimit*100) : 0;
   const gaugeData = [
-    { label:'사용', amount: totalUsed, color: CREDIT_USED_COLOR },
+    { label:'마통사용', amount: totalUsed, color: CREDIT_USED_COLOR },
     { label:'잔여한도', amount: remain, color: CREDIT_REMAIN_COLOR }
   ];
   return `<div class="chart-box" style="grid-column:1/-1;max-width:800px;margin:0 auto;">
-    ${creditBarSVG(gaugeData, 800, 22, showAmountOverlay ? (totalUsed.toLocaleString()+'원') : null)}
+    ${creditBarSVG(gaugeData, 800, 22, showAmountOverlay ? Math.floor(totalUsed/10000).toLocaleString() : null)}
     <div class="legend" style="flex-direction:row;flex-wrap:wrap;justify-content:center;gap:14px 20px;">
-      <div class="legend-item" style="gap:5px;"><span class="swatch" style="background:${CREDIT_USED_COLOR}"></span><span class="legend-name">사용</span><span class="legend-pct num" style="margin-left:2px;">${usedPct.toFixed(1)}<span class="pct-sign">%</span></span></div>
+      <div class="legend-item" style="gap:5px;"><span class="swatch" style="background:${CREDIT_USED_COLOR}"></span><span class="legend-name">마통사용</span><span class="legend-pct num" style="margin-left:2px;">${usedPct.toFixed(1)}<span class="pct-sign">%</span></span></div>
       <div class="legend-item" style="gap:5px;"><span class="swatch" style="background:${CREDIT_REMAIN_COLOR}"></span><span class="legend-name">잔여한도</span><span class="legend-pct num" style="margin-left:2px;">${remainPct.toFixed(1)}<span class="pct-sign">%</span></span></div>
     </div>
   </div>`;
@@ -1845,6 +1849,7 @@ function renderPanel(){
         ${accountTypeBarChartBlock()}
         ${sectorChartBlock(allHoldings)}
         ${regionChartBlock(allHoldings)}
+        ${chartBlock('종목별 비중', byStock, 'stock')}
         ${stockDetailButtonBlock(allHoldings)}
       </div>
     `;
