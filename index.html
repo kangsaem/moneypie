@@ -915,6 +915,33 @@ function setupStockNameAutocomplete(nameInput, acHolder, groupInput, regionSelec
   });
 }
 
+function cashRatioColor(pct){
+  if(pct < 10) return '#B85450';   // 어두운 빨강 (마통사용과 동일)
+  if(pct < 20) return '#C2477C';   // 진한 핑크
+  if(pct < 30) return '#E8A0BC';   // 연한 핑크
+  if(pct < 45) return '#F5D2DE';   // 많이 연한 핑크
+  if(pct <= 55) return '#FFFFFF';  // 흰색
+  if(pct <= 70) return '#D2ECFA';  // 많이 연한 하늘색
+  if(pct <= 80) return '#8FCBEA';  // 연한 하늘색
+  if(pct <= 90) return '#2E86C1';  // 진한 하늘색
+  return '#6B3FA0';                // 진한 보라색
+}
+
+let cashAmountAccordionOpen = false;
+function toggleCashAmountAccordion(amount){
+  const slot = document.getElementById('cash-amount-slot');
+  if(!slot) return;
+  if(cashAmountAccordionOpen){
+    slot.innerHTML = '';
+    cashAmountAccordionOpen = false;
+    return;
+  }
+  slot.innerHTML = `<div class="floating-acc" style="background:#EDEDED;color:#9A9BA1;border-radius:6px;padding:8px 14px;box-sizing:border-box;position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:4px;z-index:5;box-shadow:0 4px 12px rgba(0,0,0,0.4);white-space:nowrap;">
+    현금 평가액 <span class="num" style="font-weight:700;color:#9A9BA1;">${amount.toLocaleString()}원</span>
+  </div>`;
+  cashAmountAccordionOpen = true;
+}
+
 function getKnownStockHistory(){
   const map = {};
   state.accounts.forEach(a => {
@@ -1125,7 +1152,7 @@ function legendHTML(data, type){
     const rank = d.rank !== undefined ? d.rank : i;
     const rankCount = d.rankCount !== undefined ? d.rankCount : data.length;
     const isCashLabel = d.label === '현금' || d.label === '현금-국내' || d.label === '현금-해외' || d.label === '국내현금' || d.label === '해외현금';
-    const cashStyle = isCashLabel ? 'color:#F0DA8C;font-weight:700;font-size:15px;' : '';
+    const cashStyle = isCashLabel ? 'color:#F0DA8C;font-weight:700;' : '';
     return `<div class="legend-item"><span class="swatch" style="background:${rankColor(d.label, rank, rankCount, type)}"></span><span class="legend-name" style="${cashStyle}">${escapeHTML(d.label)}</span><span class="legend-pct num" style="${cashStyle}">${d.pct.toFixed(1)}<span class="pct-sign">%</span></span></div>`;
   }).join('') + '</div>';
 }
@@ -1991,11 +2018,12 @@ function renderPanel(){
       'investTypeLabel'
     ) : [];
     const cashTotal = _.sumBy(holdings.filter(isCashHolding), 'amount');
+    const cashPct = total ? (cashTotal/total*100) : 0;
 
     panel.innerHTML = `
       <div class="account-header" style="justify-content:center;flex-direction:column;gap:4px;">
-        <span class="total-badge">평가액<span class="num">${total.toLocaleString()}원</span></span>
-        <span class="total-badge">현금<span class="num">${cashTotal.toLocaleString()}원</span></span>
+        <span class="total-badge">자산<span class="num">${total.toLocaleString()}원</span></span>
+        <span class="total-badge" data-cashbadge="${cashTotal}" style="position:relative;cursor:pointer;">현금비중<span class="num" style="font-size:24px;color:${cashRatioColor(cashPct)};">${cashPct.toFixed(1)}<span style="font-size:12px;font-weight:400;">%</span></span><div id="cash-amount-slot"></div></span>
       </div>
       ${subTabsHtml}
       <div class="charts">
@@ -2010,6 +2038,8 @@ function renderPanel(){
     bindSectorAccordionHandlers();
     const stockDetailBtnRegion = document.getElementById('stock-detail-btn');
     if(stockDetailBtnRegion) stockDetailBtnRegion.addEventListener('click', toggleStockDetailAccordion);
+    const cashBadgeRegion = panel.querySelector('[data-cashbadge]');
+    if(cashBadgeRegion) cashBadgeRegion.addEventListener('click', () => toggleCashAmountAccordion(parseFloat(cashBadgeRegion.dataset.cashbadge)));
     panel.querySelectorAll('[data-subtype]').forEach(btn => {
       btn.addEventListener('click', () => {
         if(isDomestic) state.domesticSubType = btn.dataset.subtype;
@@ -2031,12 +2061,13 @@ function renderPanel(){
     const currentLabel = currentMonthLabel();
     const thisMonthSnap = state.snapshots.find(s => s.label === currentLabel) || (state.snapshots.length ? state.snapshots[state.snapshots.length-1] : null);
     const cashTotalAll = _.sumBy(allHoldings.filter(isCashHolding), 'amount');
+    const cashPctAll = grandTotal ? (cashTotalAll/grandTotal*100) : 0;
 
     panel.innerHTML = `
       <div class="account-header" style="justify-content:center;flex-direction:column;gap:4px;">
-        <span class="total-badge">평가액<span class="num">${grandTotal.toLocaleString()}원</span></span>
-        <span class="total-badge">현금<span class="num">${cashTotalAll.toLocaleString()}원</span></span>
-        ${thisMonthSnap ? `<div style="position:relative;margin-top:8px;"><button class="btn-memo" data-memosnap="${thisMonthSnap.id}">메모</button><div id="snap-memo-slot-${thisMonthSnap.id}"></div></div>` : ''}
+        ${thisMonthSnap ? `<div style="position:relative;"><button class="btn-memo" data-memosnap="${thisMonthSnap.id}">메모</button><div id="snap-memo-slot-${thisMonthSnap.id}"></div></div>` : ''}
+        <span class="total-badge">자산<span class="num">${grandTotal.toLocaleString()}원</span></span>
+        <span class="total-badge" data-cashbadge="${cashTotalAll}" style="position:relative;cursor:pointer;">현금비중<span class="num" style="font-size:24px;color:${cashRatioColor(cashPctAll)};">${cashPctAll.toFixed(1)}<span style="font-size:12px;font-weight:400;">%</span></span><div id="cash-amount-slot"></div></span>
       </div>
       <div class="charts">
         ${(sectorAccordionShowRegionBar = true, '')}
@@ -2055,6 +2086,8 @@ function renderPanel(){
     });
     const stockDetailBtn = document.getElementById('stock-detail-btn');
     if(stockDetailBtn) stockDetailBtn.addEventListener('click', toggleStockDetailAccordion);
+    const cashBadgeTotal = panel.querySelector('[data-cashbadge]');
+    if(cashBadgeTotal) cashBadgeTotal.addEventListener('click', () => toggleCashAmountAccordion(parseFloat(cashBadgeTotal.dataset.cashbadge)));
     return;
   }
 
@@ -2069,7 +2102,7 @@ function renderPanel(){
       <div></div>
       <div style="display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;">
         <button class="btn" id="typeBtn" style="padding:4px 10px;font-size:12px;">${escapeHTML(acc.accountType||'직투')}</button>
-        <span class="total-badge">평가액<span class="num">${accTotal.toLocaleString()}원</span></span>
+        <span class="total-badge">자산<span class="num">${accTotal.toLocaleString()}원</span></span>
       </div>
       <div style="display:flex;gap:8px;justify-self:end;">
         <button class="btn" id="renameBtn">이름 수정</button>
@@ -2166,7 +2199,7 @@ document.getElementById('importFile').addEventListener('change', (e) => {
 });
 
 document.addEventListener('click', (e) => {
-  const isTrigger = e.target.closest('[data-sector-idx],[data-region-idx],[data-memosnap],[data-editmemo],[data-savememo],[data-snap-idx],#total-memo-edit,#total-memo-save');
+  const isTrigger = e.target.closest('[data-sector-idx],[data-region-idx],[data-memosnap],[data-editmemo],[data-savememo],[data-snap-idx],[data-cashbadge],#total-memo-edit,#total-memo-save');
   const isInsideAccordion = e.target.closest('.floating-acc');
   if(isTrigger || isInsideAccordion) return;
   if(sectorAccordionOpenIdx !== null){
@@ -2188,6 +2221,11 @@ document.addEventListener('click', (e) => {
     const s = document.getElementById('total-memo-slot');
     if(s) s.innerHTML = '';
     openTotalMemoId = null;
+  }
+  if(cashAmountAccordionOpen){
+    const s = document.getElementById('cash-amount-slot');
+    if(s) s.innerHTML = '';
+    cashAmountAccordionOpen = false;
   }
 });
 
