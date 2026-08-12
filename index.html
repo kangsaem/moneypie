@@ -533,19 +533,19 @@ function rankColor(label, index, count, type){
   if(label === '해외현금') return CASH_OVERSEAS;
   if(label === '현금') return CASH_COLOR;
   if(type === 'stock'){
+    const cycle = Math.floor(index/2);
+    const totalCycles = Math.ceil(count/2);
+    const t = totalCycles > 1 ? cycle/(totalCycles-1) : 0;
+    if(index % 2 === 1) return lerpColor(GROUP_STRONG, GROUP_LIGHT, t);
+    return lerpColor(NAVY_STRONG, NAVY_LIGHT, t);
+  }
+  if(type === 'group'){
     const hueRamps = [[DARKPINK_STRONG,DARKPINK_LIGHT], [STOCK_STRONG,STOCK_LIGHT]];
     const [strong, light] = hueRamps[index % 2];
     const cycle = Math.floor(index/2);
     const totalCycles = Math.ceil(count/2);
     const t = totalCycles > 1 ? cycle/(totalCycles-1) : 0;
     return lerpColor(strong, light, t);
-  }
-  if(type === 'group'){
-    const cycle = Math.floor(index/2);
-    const totalCycles = Math.ceil(count/2);
-    const t = totalCycles > 1 ? cycle/(totalCycles-1) : 0;
-    if(index % 2 === 1) return lerpColor(GROUP_STRONG, GROUP_LIGHT, t);
-    return lerpColor(NAVY_STRONG, NAVY_LIGHT, t);
   }
   const t = count > 1 ? index/(count-1) : 0;
   const ramps = { region:[REGION_STRONG,REGION_LIGHT], accountType:[ACCTYPE_STRONG,ACCTYPE_LIGHT] };
@@ -2064,10 +2064,10 @@ function renderPanel(){
     const cashPctAll = grandTotal ? (cashTotalAll/grandTotal*100) : 0;
 
     panel.innerHTML = `
-      <div class="account-header" style="justify-content:center;flex-direction:column;gap:4px;">
-        ${thisMonthSnap ? `<div style="position:relative;"><button class="btn-memo" data-memosnap="${thisMonthSnap.id}">메모</button><div id="snap-memo-slot-${thisMonthSnap.id}"></div></div>` : ''}
+      <div class="account-header" style="justify-content:center;flex-direction:column;gap:0;">
+        ${thisMonthSnap ? `<div style="position:relative;margin-bottom:14px;"><button class="btn-memo" data-memosnap="${thisMonthSnap.id}">메모</button><div id="snap-memo-slot-${thisMonthSnap.id}"></div></div>` : ''}
         <span class="total-badge">자산<span class="num">${grandTotal.toLocaleString()}원</span></span>
-        <span class="total-badge" data-cashbadge="${cashTotalAll}" style="position:relative;cursor:pointer;">현금비중<span class="num" style="font-size:24px;color:${cashRatioColor(cashPctAll)};">${cashPctAll.toFixed(1)}<span style="font-size:12px;font-weight:400;">%</span></span><div id="cash-amount-slot"></div></span>
+        <span class="total-badge" data-cashbadge="${cashTotalAll}" style="position:relative;cursor:pointer;margin-top:1px;">현금비중<span class="num" style="font-size:24px;color:${cashRatioColor(cashPctAll)};">${cashPctAll.toFixed(1)}<span style="font-size:12px;font-weight:400;">%</span></span><div id="cash-amount-slot"></div></span>
       </div>
       <div class="charts">
         ${(sectorAccordionShowRegionBar = true, '')}
