@@ -1346,11 +1346,11 @@ function holdingsTable(holdings, accId, editable, showRegion, alignMode, mergeDu
     const displayName = isCash ? (h.region === 'overseas' ? '현금-해외' : '현금-국내') : escapeHTML(h.name);
     const cashColor = isCash ? 'color:#F0DA8C;font-weight:700;' : '';
     return `
-    <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:14px;">
-      <div style="flex:2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;${cashColor}">${displayName}</div>
-      <div style="flex:1.3;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:${amountAlign};${cashColor}" class="num">${h.amount.toLocaleString()}</div>
-      <div style="flex:1.3;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-dim);text-align:${groupAlign};">${escapeHTML(h.group)}</div>
-      ${showRegion ? `<div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-dim);text-align:${regionAlign};">${h.region==='overseas'?'해외':'국내'}</div>` : ''}
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:14px;">
+      <div style="flex:2;min-width:90px;text-align:left;${cashColor}">${displayName}</div>
+      <div style="flex:1.6;min-width:125px;text-align:${amountAlign};${cashColor}" class="num">${h.amount.toLocaleString()}</div>
+      <div style="flex:1.3;min-width:80px;color:var(--text-dim);text-align:${groupAlign};">${escapeHTML(h.group)}</div>
+      ${showRegion ? `<div style="flex:1;min-width:70px;color:var(--text-dim);text-align:${regionAlign};">${h.region==='overseas'?'해외':'국내'}</div>` : ''}
       ${editable ? `<div style="flex-shrink:0;text-align:right;"><button class="del" data-edit="${h.id}">수정</button> <button class="del" data-del="${h.id}">삭제</button></div>` : ''}
     </div>`;
   }).join('');
