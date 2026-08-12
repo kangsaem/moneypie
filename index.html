@@ -1857,7 +1857,7 @@ function renderHistoryPanel(){
     ${rangeSelector}
     <div style="position:relative;">
       <div id="total-memo-slot"></div>
-      <div class="trend-wrap">${lineChartSVG(points, lineSeries, 860, 205, range === '24' ? 'shrink' : (range === 'all' ? 'sparse' : 'normal'), range === 'all')}</div>
+      <div class="trend-wrap">${lineChartSVG(points, lineSeries, 860, 205, range === '24' ? 'shrink' : (range === 'all' ? 'sparse' : 'normal'), range === 'all' || range === '3')}</div>
     </div>
     ${trendBarsHTML(filtered, 'group', 'group', '섹터', range === 'all', 'group')}
     ${trendBarsHTML(filtered, regionLabelFor, 'region', '국내/해외', range === 'all', 'region')}
