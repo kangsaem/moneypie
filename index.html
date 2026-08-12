@@ -937,8 +937,8 @@ function toggleCashAmountAccordion(amount){
     return;
   }
   slot.innerHTML = `<div data-cashamtclose style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:999;"></div>
-  <div class="floating-acc" style="background:#EDEDED;border-radius:8px;padding:14px 20px;box-sizing:border-box;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;box-shadow:0 8px 24px rgba(0,0,0,0.5);width:180px;">
-    <div style="width:100%;box-sizing:border-box;padding:6px 0;font-size:16px;color:#333333;border-bottom:1px solid #C9C9C9;text-align:center;" class="num">${amount.toLocaleString()}원</div>
+  <div class="floating-acc" style="background:#EDEDED;border-radius:8px;padding:14px 20px;box-sizing:border-box;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;box-shadow:0 8px 24px rgba(0,0,0,0.5);width:180px;text-align:center;">
+    <span class="num" style="display:inline-block;padding:6px 4px;font-size:16px;color:#333333;border-bottom:1px solid #C9C9C9;">${amount.toLocaleString()}원</span>
   </div>`;
   cashAmountAccordionOpen = true;
   const backdrop = slot.querySelector('[data-cashamtclose]');
