@@ -1359,7 +1359,7 @@ function holdingsTable(holdings, accId, editable, showRegion, alignMode, mergeDu
   return `<div>${rows}</div>`;
 }
 
-function lineChartSVG(points, extraSeries, width, height, labelMode){
+function lineChartSVG(points, extraSeries, width, height, labelMode, responsive){
   if(points.length === 0) return '<div class="empty">저장된 월별 자산이 없습니다.</div>';
   labelMode = labelMode || 'normal';
   const padX = 30, topPad = 66, bottomPad = 34;
@@ -1447,7 +1447,8 @@ function lineChartSVG(points, extraSeries, width, height, labelMode){
 
   const legendHtml = `<div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--text-dim);margin-bottom:4px;"><span>${legend}</span><span>단위: 만원</span></div>`;
 
-  return `${legendHtml}<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;"><svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" style="display:block;flex-shrink:0;">
+  const svgWidthAttr = responsive ? '100%' : width;
+  return `${legendHtml}<div class="trend-scroll" style="overflow-x:${responsive ? 'visible' : 'auto'};-webkit-overflow-scrolling:touch;"><svg width="${svgWidthAttr}" height="${height}" viewBox="0 0 ${width} ${height}" style="display:block;${responsive ? '' : 'flex-shrink:0;'}">
     <line x1="${padX}" y1="${baseline.toFixed(1)}" x2="${width-padX}" y2="${baseline.toFixed(1)}" stroke="#3D3E43" stroke-width="1"/>
     ${extraPaths}
     <path d="${linePath}" fill="none" stroke="#F0DA8C" stroke-width="2"/>
@@ -1599,26 +1600,60 @@ function bindTrendAccordionHandlers(){
   });
 }
 
-function attachSwipeNav(el, onNavigate){
+function attachSwipeNav(el, onNavigate, canPrev, canNext){
   if(!el) return;
   let startX = null;
   let dragging = false;
-  const threshold = 40;
-  function onStart(x){ startX = x; dragging = true; }
+  const threshold = 60;
+  const maxDrag = 90;
+  const baseTransform = 'translate(-50%,-50%)';
+
+  function computeDelta(rawDelta){
+    // rawDelta > 0: 오른쪽으로 당김(이전달 방향), < 0: 왼쪽으로 당김(다음달 방향)
+    const blocked = (rawDelta > 0 && !canPrev) || (rawDelta < 0 && !canNext);
+    if(blocked){
+      const damped = rawDelta * 0.35;
+      return Math.max(-maxDrag, Math.min(maxDrag, damped));
+    }
+    return rawDelta;
+  }
+
+  function onStart(x){
+    startX = x;
+    dragging = true;
+    el.style.transition = 'none';
+  }
+  function onMove(x){
+    if(!dragging || startX === null) return;
+    const delta = computeDelta(x - startX);
+    el.style.transform = `${baseTransform} translateX(${delta}px)`;
+  }
   function onEnd(x){
-    if(!dragging || startX === null){ dragging = false; startX = null; return; }
-    const dx = x - startX;
+    if(!dragging || startX === null) return;
+    const raw = x - startX;
     dragging = false;
     startX = null;
-    if(Math.abs(dx) < threshold) return;
-    if(dx > 0) onNavigate(1);   // 오른쪽으로 스와이프/드래그 -> 이전달(더 과거)
-    else onNavigate(-1);        // 왼쪽으로 -> 다음달(더 최근)
+    el.style.transition = 'transform 0.25s ease';
+    el.style.transform = `${baseTransform} translateX(0px)`;
+    const shouldNavigate = Math.abs(raw) >= threshold && ((raw > 0 && canPrev) || (raw < 0 && canNext));
+    if(shouldNavigate){
+      setTimeout(() => onNavigate(raw > 0 ? 1 : -1), 0);
+    }
+  }
+  function onCancel(){
+    if(!dragging) return;
+    dragging = false;
+    startX = null;
+    el.style.transition = 'transform 0.25s ease';
+    el.style.transform = `${baseTransform} translateX(0px)`;
   }
   el.addEventListener('touchstart', (e) => onStart(e.touches[0].clientX), { passive:true });
+  el.addEventListener('touchmove', (e) => onMove(e.touches[0].clientX), { passive:true });
   el.addEventListener('touchend', (e) => onEnd(e.changedTouches[0].clientX));
   el.addEventListener('mousedown', (e) => { onStart(e.clientX); e.preventDefault(); });
+  el.addEventListener('mousemove', (e) => onMove(e.clientX));
   el.addEventListener('mouseup', (e) => onEnd(e.clientX));
-  el.addEventListener('mouseleave', () => { dragging = false; startX = null; });
+  el.addEventListener('mouseleave', onCancel);
 }
 
 let totalStockDetailHoldings = [];
@@ -1710,7 +1745,7 @@ function renderTrendAccordionContent(){
       navigateTrendMonth(parseInt(btn.dataset.trendnav, 10));
     });
   });
-  attachSwipeNav(document.getElementById('trend-accordion-box'), navigateTrendMonth);
+  attachSwipeNav(document.getElementById('trend-accordion-box'), navigateTrendMonth, canPrev, canNext);
 }
 
 function trendBarsHTML(snapshots, groupKey, type, title, compact, idPrefix){
@@ -1809,12 +1844,14 @@ function renderHistoryPanel(){
     ${rangeSelector}
     <div style="position:relative;">
       <div id="total-memo-slot"></div>
-      <div class="trend-wrap">${lineChartSVG(points, lineSeries, 860, 205, range === '24' ? 'shrink' : (range === 'all' ? 'sparse' : 'normal'))}</div>
+      <div class="trend-wrap">${lineChartSVG(points, lineSeries, 860, 205, range === '24' ? 'shrink' : (range === 'all' ? 'sparse' : 'normal'), range === 'all')}</div>
     </div>
     ${trendBarsHTML(filtered, 'group', 'group', '섹터', range === 'all', 'group')}
     ${trendBarsHTML(filtered, regionLabelFor, 'region', '국내/해외', range === 'all', 'region')}
     ${trendBarsHTML(filtered, 'name', 'stock', '종목', range === 'all', 'stock')}
   `;
+  const trendScrollEl = panel.querySelector('.trend-scroll');
+  if(trendScrollEl) trendScrollEl.scrollLeft = trendScrollEl.scrollWidth;
   document.getElementById('rangeSelect').addEventListener('change', (e) => {
     state.historyRange = e.target.value;
     render();
