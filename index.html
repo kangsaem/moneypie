@@ -936,8 +936,8 @@ function toggleCashAmountAccordion(amount){
     cashAmountAccordionOpen = false;
     return;
   }
-  slot.innerHTML = `<div class="floating-acc" style="background:#EDEDED;border-radius:6px;padding:8px 14px;box-sizing:border-box;position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:4px;z-index:5;box-shadow:0 4px 12px rgba(0,0,0,0.4);white-space:nowrap;">
-    <div style="padding:4px 0;font-size:12px;color:#333333;border-bottom:1px solid #C9C9C9;text-align:center;" class="num">${amount.toLocaleString()}원</div>
+  slot.innerHTML = `<div class="floating-acc" style="background:#EDEDED;border-radius:6px;padding:10px 16px;box-sizing:border-box;position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:4px;z-index:5;box-shadow:0 4px 12px rgba(0,0,0,0.4);width:160px;">
+    <div style="width:100%;box-sizing:border-box;padding:6px 0;font-size:15px;color:#333333;border-bottom:1px solid #C9C9C9;text-align:center;" class="num">${amount.toLocaleString()}원</div>
   </div>`;
   cashAmountAccordionOpen = true;
 }
@@ -1484,13 +1484,26 @@ function greenBarWithLabelHTML(data, width, height){
     xPct += wPct;
   });
   const barSvg = greenBarSVG(ordered, width, height);
-  let overlay = '';
-  if(domesticSeg && domesticSeg.pct >= 10){
-    overlay = `<div style="position:absolute;top:0;left:${domesticSeg.xPct.toFixed(2)}%;width:${domesticSeg.wPct.toFixed(2)}%;height:${height}px;display:flex;align-items:center;justify-content:flex-end;padding-right:4px;pointer-events:none;overflow:hidden;box-sizing:border-box;">
-      <span style="color:#fff;font-size:10px;font-weight:700;white-space:nowrap;">${domesticSeg.pct.toFixed(0)}%</span>
-    </div>`;
+  let pctOverlay = '';
+  let labelOverlay = '';
+  if(domesticSeg){
+    const segPixelWidth = (domesticSeg.wPct/100) * width;
+    // "국내" 글자(왼쪽)와 비중 숫자(오른쪽)가 겹치지 않을 만큼 폭이 있을 때만 "국내" 라벨을 보여준다
+    const labelPixelNeed = 18;   // "국내" 텍스트 대략적인 폭
+    const pctPixelNeed = domesticSeg.pct >= 10 ? 24 : 0; // 비중 숫자 대략적인 폭 (10% 미만이면 애초에 숫자도 안 그림)
+    const gapNeed = 6;
+    if(domesticSeg.pct >= 10){
+      pctOverlay = `<div style="position:absolute;top:0;left:${domesticSeg.xPct.toFixed(2)}%;width:${domesticSeg.wPct.toFixed(2)}%;height:${height}px;display:flex;align-items:center;justify-content:flex-end;padding-right:4px;pointer-events:none;overflow:hidden;box-sizing:border-box;">
+        <span style="color:#fff;font-size:10px;font-weight:700;white-space:nowrap;">${domesticSeg.pct.toFixed(0)}%</span>
+      </div>`;
+    }
+    if(segPixelWidth >= labelPixelNeed + pctPixelNeed + gapNeed + 8){
+      labelOverlay = `<div style="position:absolute;top:0;left:${domesticSeg.xPct.toFixed(2)}%;width:${domesticSeg.wPct.toFixed(2)}%;height:${height}px;display:flex;align-items:center;justify-content:flex-start;padding-left:4px;pointer-events:none;overflow:hidden;box-sizing:border-box;">
+        <span style="color:#fff;opacity:0.5;font-size:10px;font-weight:700;white-space:nowrap;">국내</span>
+      </div>`;
+    }
   }
-  return `<div style="position:relative;">${barSvg}${overlay}</div>`;
+  return `<div style="position:relative;">${barSvg}${labelOverlay}${pctOverlay}</div>`;
 }
 
 let openTotalMemoId = null;
