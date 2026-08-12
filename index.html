@@ -1527,7 +1527,7 @@ function greenBarWithLabelHTML(data, width, height){
       </div>`;
     }
     if(segPixelWidth >= labelPixelNeed + pctPixelNeed + gapNeed + 8){
-      labelOverlay = `<div style="position:absolute;top:0;left:${domesticSeg.xPct.toFixed(2)}%;width:${domesticSeg.wPct.toFixed(2)}%;height:${height}px;display:flex;align-items:center;justify-content:flex-start;padding-left:1px;pointer-events:none;overflow:hidden;box-sizing:border-box;">
+      labelOverlay = `<div style="position:absolute;top:0;left:${domesticSeg.xPct.toFixed(2)}%;width:${domesticSeg.wPct.toFixed(2)}%;height:${height}px;display:flex;align-items:center;justify-content:flex-start;padding-left:3px;pointer-events:none;overflow:hidden;box-sizing:border-box;">
         <span style="color:#fff;opacity:0.5;font-size:10px;font-weight:400;white-space:nowrap;">국내</span>
       </div>`;
     }
