@@ -1604,8 +1604,8 @@ function attachSwipeNav(el, onNavigate, canPrev, canNext){
   if(!el) return;
   let startX = null;
   let dragging = false;
-  const threshold = 60;
-  const maxDrag = 90;
+  const threshold = 40;
+  const maxDrag = 60;
   const baseTransform = 'translate(-50%,-50%)';
 
   function computeDelta(rawDelta){
