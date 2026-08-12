@@ -1371,6 +1371,18 @@ function lineChartSVG(points, extraSeries, width, height, labelMode, responsive)
   const linePath = coords.map((c,i)=> (i===0?'M':'L') + c[0].toFixed(1) + ',' + c[1].toFixed(1)).join(' ');
   const dots = coords.map((c,i) => `<circle cx="${c[0].toFixed(1)}" cy="${c[1].toFixed(1)}" r="11" fill="transparent" data-snap-idx="${i}" style="cursor:pointer;"/><circle cx="${c[0].toFixed(1)}" cy="${c[1].toFixed(1)}" r="3.5" fill="#F0DA8C" style="pointer-events:none;"/>`).join('');
 
+  // 반응형(전체기간) 모드에서는 글자를 SVG 밖 HTML 오버레이로 그려서, 가로만 압축되고
+  // 세로/폰트 크기는 원본 그대로 유지되도록 한다 (SVG 내부 텍스트는 가로세로 함께 눌려서 찌그러짐).
+  const htmlOverlayParts = [];
+  function labelMarkup(x, y, text, fontSize, weight, color){
+    if(!responsive){
+      return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-size="${fontSize}" font-weight="${weight}" fill="${color}" text-anchor="middle">${text}</text>`;
+    }
+    const leftPct = (x / width * 100).toFixed(2);
+    htmlOverlayParts.push(`<span style="position:absolute;left:${leftPct}%;top:${y.toFixed(1)}px;transform:translate(-50%,-100%);font-size:${fontSize}px;font-weight:${weight};color:${color};white-space:nowrap;">${text}</span>`);
+    return '';
+  }
+
   const rawValues = points.map(p=>p.value);
   const lastIdx = points.length - 1;
   const maxIdx = rawValues.indexOf(Math.max(...rawValues));
@@ -1385,7 +1397,7 @@ function lineChartSVG(points, extraSeries, width, height, labelMode, responsive)
     }
     if(!show) return '';
     const fs = Math.round(13.65*scale);
-    return `<text x="${coords[i][0].toFixed(1)}" y="${(coords[i][1]-12).toFixed(1)}" font-size="${fs}" font-weight="700" fill="#F0DA8C" text-anchor="middle">${Math.floor(p.value/10000).toLocaleString()}</text>`;
+    return labelMarkup(coords[i][0], coords[i][1]-12, Math.floor(p.value/10000).toLocaleString(), fs, 700, '#F0DA8C');
   }).join('');
   const changeLabels = points.map((p,i) => {
     if(i === 0) return '';
@@ -1402,9 +1414,9 @@ function lineChartSVG(points, extraSeries, width, height, labelMode, responsive)
     const color = change > 0 ? '#5DCAA5' : (change < 0 ? '#E37272' : '#9A9BA1');
     const sign = change >= 0 ? '+' : '';
     const fs = Math.max(10, Math.round(13.5*scale));
-    return `<text x="${coords[i][0].toFixed(1)}" y="${(coords[i][1]-32).toFixed(1)}" font-size="${fs}" font-weight="600" fill="${color}" text-anchor="middle">${sign}${change.toFixed(1)}%</text>`;
+    return labelMarkup(coords[i][0], coords[i][1]-32, `${sign}${change.toFixed(1)}%`, fs, 600, color);
   }).join('');
-  const monthLabels = points.map((p,i) => `<text x="${coords[i][0].toFixed(1)}" y="${height-6}" font-size="10" fill="#9A9BA1" text-anchor="middle">${shortMonthLabel(p.label)}</text>`).join('');
+  const monthLabels = points.map((p,i) => labelMarkup(coords[i][0], height-6, shortMonthLabel(p.label), 10, 400, '#9A9BA1')).join('');
   const baseline = scaleY(minVal < 0 ? 0 : minVal);
 
   let extraPaths = '';
@@ -1438,7 +1450,7 @@ function lineChartSVG(points, extraSeries, width, height, labelMode, responsive)
         const isLowest = lowestSeriesIndexAt[i] === myIdx;
         const ly = isLowest ? pt[1] + 20 : pt[1] - 10;
         const fs = Math.max(10, Math.round(13.5*scale));
-        return `<text x="${pt[0].toFixed(1)}" y="${ly.toFixed(1)}" font-size="${fs}" font-weight="600" fill="${s.color}" text-anchor="middle">${Math.floor(s.points[i].value/10000).toLocaleString()}</text>`;
+        return labelMarkup(pt[0], ly, Math.floor(s.points[i].value/10000).toLocaleString(), fs, 600, s.color);
       }).join('');
     }
     extraPaths += `<path d="${path}" fill="none" stroke="${s.color}" stroke-width="1.5"/>${sDots}${sLabels}`;
@@ -1448,7 +1460,8 @@ function lineChartSVG(points, extraSeries, width, height, labelMode, responsive)
   const legendHtml = `<div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--text-dim);margin-bottom:4px;"><span>${legend}</span><span>단위: 만원</span></div>`;
 
   const svgWidthAttr = responsive ? '100%' : width;
-  return `${legendHtml}<div class="trend-scroll" style="overflow-x:${responsive ? 'visible' : 'auto'};-webkit-overflow-scrolling:touch;"><svg width="${svgWidthAttr}" height="${height}" viewBox="0 0 ${width} ${height}" style="display:block;${responsive ? '' : 'flex-shrink:0;'}">
+  const overlayDiv = responsive ? `<div style="position:absolute;inset:0;pointer-events:none;">${htmlOverlayParts.join('')}</div>` : '';
+  return `${legendHtml}<div class="trend-scroll" style="position:relative;overflow-x:${responsive ? 'visible' : 'auto'};-webkit-overflow-scrolling:touch;"><svg width="${svgWidthAttr}" height="${height}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" style="display:block;${responsive ? '' : 'flex-shrink:0;'}">
     <line x1="${padX}" y1="${baseline.toFixed(1)}" x2="${width-padX}" y2="${baseline.toFixed(1)}" stroke="#3D3E43" stroke-width="1"/>
     ${extraPaths}
     <path d="${linePath}" fill="none" stroke="#F0DA8C" stroke-width="2"/>
@@ -1456,7 +1469,7 @@ function lineChartSVG(points, extraSeries, width, height, labelMode, responsive)
     ${changeLabels}
     ${valueLabels}
     ${monthLabels}
-  </svg></div>`;
+  </svg>${overlayDiv}</div>`;
 }
 
 function stackedBarSVG(data, width, height, type){
