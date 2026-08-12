@@ -954,7 +954,7 @@ function cashRatioColor(pct){
 }
 
 let cashAmountAccordionOpen = false;
-function toggleCashAmountAccordion(amount){
+function toggleCashAmountAccordion(amount, triggerEl){
   const slot = document.getElementById('cash-amount-slot');
   if(!slot) return;
   if(cashAmountAccordionOpen){
@@ -962,13 +962,15 @@ function toggleCashAmountAccordion(amount){
     cashAmountAccordionOpen = false;
     return;
   }
+  const gap = 8;
+  const topPx = triggerEl ? (triggerEl.getBoundingClientRect().bottom + gap) : 100;
   slot.innerHTML = `<div data-cashamtclose style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:999;"></div>
-  <div class="floating-acc" style="background:#EDEDED;border-radius:8px;padding:14px 20px;box-sizing:border-box;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;box-shadow:0 8px 24px rgba(0,0,0,0.5);width:180px;text-align:center;">
+  <div class="floating-acc" style="background:#EDEDED;border-radius:8px;padding:14px 20px;box-sizing:border-box;position:fixed;top:${topPx}px;left:50%;transform:translateX(-50%);z-index:1000;box-shadow:0 8px 24px rgba(0,0,0,0.5);width:180px;text-align:center;">
     <span class="num" style="display:inline-block;padding:6px 4px;font-size:16px;color:#333333;border-bottom:1px solid #C9C9C9;">${amount.toLocaleString()}원</span>
   </div>`;
   cashAmountAccordionOpen = true;
   const backdrop = slot.querySelector('[data-cashamtclose]');
-  if(backdrop) backdrop.addEventListener('click', () => toggleCashAmountAccordion(amount));
+  if(backdrop) backdrop.addEventListener('click', () => toggleCashAmountAccordion(amount, triggerEl));
 }
 
 function getKnownStockHistory(){
@@ -2082,7 +2084,7 @@ function renderPanel(){
     const stockDetailBtnRegion = document.getElementById('stock-detail-btn');
     if(stockDetailBtnRegion) stockDetailBtnRegion.addEventListener('click', toggleStockDetailAccordion);
     const cashBadgeRegion = panel.querySelector('[data-cashbadge]');
-    if(cashBadgeRegion) cashBadgeRegion.addEventListener('click', () => toggleCashAmountAccordion(parseFloat(cashBadgeRegion.dataset.cashbadge)));
+    if(cashBadgeRegion) cashBadgeRegion.addEventListener('click', () => toggleCashAmountAccordion(parseFloat(cashBadgeRegion.dataset.cashbadge), cashBadgeRegion));
     panel.querySelectorAll('[data-subtype]').forEach(btn => {
       btn.addEventListener('click', () => {
         if(isDomestic) state.domesticSubType = btn.dataset.subtype;
@@ -2131,7 +2133,7 @@ function renderPanel(){
     const stockDetailBtn = document.getElementById('stock-detail-btn');
     if(stockDetailBtn) stockDetailBtn.addEventListener('click', toggleStockDetailAccordion);
     const cashBadgeTotal = panel.querySelector('[data-cashbadge]');
-    if(cashBadgeTotal) cashBadgeTotal.addEventListener('click', () => toggleCashAmountAccordion(parseFloat(cashBadgeTotal.dataset.cashbadge)));
+    if(cashBadgeTotal) cashBadgeTotal.addEventListener('click', () => toggleCashAmountAccordion(parseFloat(cashBadgeTotal.dataset.cashbadge), cashBadgeTotal));
     return;
   }
 
