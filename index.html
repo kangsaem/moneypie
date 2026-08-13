@@ -1524,7 +1524,7 @@ function bindSectorAccordionHandlers(){
       if(sectorAccordionOpenIdx === idx){
         slot.innerHTML = '';
         sectorAccordionOpenIdx = null;
-        clearChartHighlight(el, 'mid');
+        clearChartHighlight(el, 'decorative-sector');
         return;
       }
       const holdings = sectorAccordionHoldings.filter(h => h.group === label);
@@ -1540,7 +1540,7 @@ function bindSectorAccordionHandlers(){
         ${rows || '<div class="empty">데이터 없음</div>'}
       </div>`;
       sectorAccordionOpenIdx = idx;
-      highlightChartSlice(el, idx, 'mid');
+      highlightChartSlice(el, idx, 'decorative-sector');
     });
   });
 }
@@ -1590,7 +1590,7 @@ function bindRegionAccordionHandlers(){
       if(regionAccordionOpenIdx === idx){
         slot.innerHTML = '';
         regionAccordionOpenIdx = null;
-        clearChartHighlight(el, 'outer');
+        clearChartHighlight(el, 'decorative-region');
         return;
       }
       let breakdown;
@@ -1606,7 +1606,7 @@ function bindRegionAccordionHandlers(){
         ${rows || '<div class="empty">데이터 없음</div>'}
       </div>`;
       regionAccordionOpenIdx = idx;
-      highlightChartSlice(el, idx, 'outer');
+      highlightChartSlice(el, idx, 'decorative-region');
     });
   });
 }
