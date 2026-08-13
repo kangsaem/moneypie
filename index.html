@@ -1391,7 +1391,7 @@ function stockLegendWithDividers(data, sortMode){
   function sectionHeader(groupName){
     if(!groupName || groupName === '현금') return '';
     return `<div style="display:flex;align-items:center;gap:8px;margin:8px 0 4px;">
-      <span style="font-size:13px;color:var(--text);font-weight:700;white-space:nowrap;">${escapeHTML(groupName)}</span>
+      <span style="font-size:13px;color:var(--text);font-weight:700;white-space:nowrap;opacity:0.8;">${escapeHTML(groupName)}</span>
       <div style="flex:1;border-top:1px dashed var(--text-dim);"></div>
     </div>`;
   }
