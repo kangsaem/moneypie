@@ -118,12 +118,14 @@
   .donut-wrap{width:160px;height:160px;margin:0 auto;}
   .donut-wrap svg{filter:drop-shadow(7px 10px 10px rgba(0,0,0,0.16)) drop-shadow(3px 4px 4px rgba(0,0,0,0.1));}
   @media(max-width:640px){.donut-wrap{width:230px;height:230px;}}
-  .donut-wrap-lg{width:192px;height:192px;margin:0 auto;}
-  @media(max-width:640px){.donut-wrap-lg{width:276px;height:276px;}}
-  .donut-wrap-xl{width:208px;height:208px;margin:0 auto;}
-  @media(max-width:640px){.donut-wrap-xl{width:299px;height:299px;}}
-  .donut-wrap-xxl{width:224px;height:224px;margin:0 auto;}
-  @media(max-width:640px){.donut-wrap-xxl{width:322px;height:322px;}}
+  .donut-wrap-md{width:172px;height:172px;margin:0 auto;}
+  @media(max-width:640px){.donut-wrap-md{width:247px;height:247px;}}
+  .donut-wrap-lg{width:184px;height:184px;margin:0 auto;}
+  @media(max-width:640px){.donut-wrap-lg{width:264px;height:264px;}}
+  .donut-wrap-xl{width:196px;height:196px;margin:0 auto;}
+  @media(max-width:640px){.donut-wrap-xl{width:282px;height:282px;}}
+  .donut-wrap-xxl{width:208px;height:208px;margin:0 auto;}
+  @media(max-width:640px){.donut-wrap-xxl{width:299px;height:299px;}}
   .stock-donut-center-label{font-size:11px;}
   @media(max-width:640px){.stock-donut-center-label{font-size:16px;}}
   .mkt-card{
@@ -1415,7 +1417,7 @@ function stockChartBlockSortable(holdings, allowRegion, extraRingSpecs){
   // 외부링은 기본 투명도 0.5, 현재 정렬기준과 일치하는 링(섹터순->섹터링, 국내해외순->지역링)만 1.0
   const rings = (extraRingSpecs || []).map(spec => {
     if(spec.partial) return spec; // 마통사용 링은 별도 색/투명도 유지
-    let opacity = 0.5;
+    let opacity = 0.7;
     if(stockLegendSortMode === 'group' && spec.name === 'decorative-sector') opacity = 1;
     if(stockLegendSortMode === 'region' && spec.name === 'decorative-region') opacity = 1;
     return { ...spec, opacity };
@@ -1423,11 +1425,11 @@ function stockChartBlockSortable(holdings, allowRegion, extraRingSpecs){
 
   // 파이(종목) 자체 반지름은 다른 단독 도넛과 완전히 동일(size=160 기준 r=74)하게 유지하고,
   // 그 바깥에 링들을 간격 없이 안쪽부터 순서대로 이어 붙인다. 전체 캔버스만 그만큼 넓어진다.
-  const pieR = 74, ringW = 8;
-  const outerSize = 192 + Math.max(rings.length - 2, 0) * ringW * 2;
+  const pieR = 74, ringW = 6;
+  const outerSize = 2 * (pieR + rings.length * ringW + 6);
   const cx = outerSize/2, cy = outerSize/2;
   const pieInner = donutSVG(ordered, 160, 'stock').replace(/^<div class="donut-wrap">/, '').replace(/<\/div>$/, '');
-  const sizeClass = rings.length >= 4 ? 'donut-wrap-xxl' : (rings.length >= 3 ? 'donut-wrap-xl' : 'donut-wrap-lg');
+  const sizeClass = rings.length >= 4 ? 'donut-wrap-xxl' : (rings.length >= 3 ? 'donut-wrap-xl' : (rings.length >= 2 ? 'donut-wrap-lg' : 'donut-wrap-md'));
 
   return `<div class="chart-box" id="stock-sortable-chart">
     <div class="donut-wrap ${sizeClass}" style="position:relative;cursor:pointer;" data-donut-cycle>
