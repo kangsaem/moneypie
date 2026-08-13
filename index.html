@@ -1222,8 +1222,10 @@ function escapeHTML(s){
 }
 
 let stockLegendSortMode = 'amount';
-const STOCK_SORT_CYCLE = ['amount', 'name', 'group', 'region'];
-const STOCK_SORT_LABEL = { amount:'평가액순', name:'가나다순', group:'섹터순', region:'국내-해외순' };
+let stockSortCycleActive = null;
+const STOCK_SORT_CYCLE_FULL = ['amount', 'group', 'region', 'name'];
+const STOCK_SORT_CYCLE_NO_REGION = ['amount', 'group', 'name'];
+const STOCK_SORT_LABEL = { amount:'', group:'섹터순', region:'국내/해외순', name:'이름순' };
 
 function computeStockDataWithMeta(holdings){
   const total = _.sumBy(holdings, 'amount');
@@ -1267,16 +1269,24 @@ function sortStockData(data, mode){
 }
 
 function cycleStockSort(){
-  const idx = STOCK_SORT_CYCLE.indexOf(stockLegendSortMode);
-  stockLegendSortMode = STOCK_SORT_CYCLE[(idx + 1) % STOCK_SORT_CYCLE.length];
+  const cycle = stockSortCycleActive || STOCK_SORT_CYCLE_FULL;
+  const idx = cycle.indexOf(stockLegendSortMode);
+  stockLegendSortMode = cycle[(idx + 1) % cycle.length];
   render();
 }
 
-function stockChartBlockSortable(holdings){
+function stockChartBlockSortable(holdings, allowRegion){
+  stockSortCycleActive = allowRegion === false ? STOCK_SORT_CYCLE_NO_REGION : STOCK_SORT_CYCLE_FULL;
+  if(!stockSortCycleActive.includes(stockLegendSortMode)) stockLegendSortMode = 'amount';
   const rawData = computeStockDataWithMeta(holdings);
   const ordered = sortStockData(rawData, stockLegendSortMode);
-  return `<div class="chart-box" id="stock-sortable-chart">${donutSVG(ordered, 160, 'stock')}${legendHTML(ordered, 'stock')}
-    <div style="text-align:center;margin-top:4px;font-size:10px;color:var(--text-dim);">정렬: ${STOCK_SORT_LABEL[stockLegendSortMode]}</div>
+  const centerLabel = STOCK_SORT_LABEL[stockLegendSortMode];
+  return `<div class="chart-box" id="stock-sortable-chart">
+    <div style="position:relative;">
+      ${donutSVG(ordered, 160, 'stock')}
+      ${centerLabel ? `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;"><span style="font-size:11px;color:var(--text-dim);font-weight:700;text-align:center;">${centerLabel}</span></div>` : ''}
+    </div>
+    ${legendHTML(ordered, 'stock')}
   </div>`;
 }
 
@@ -2321,7 +2331,7 @@ function renderPanel(){
         ${sectorChartBlock(holdings)}
         ${(isDomestic && subType === '전체') ? chartBlock('계좌유형 비중', byAccountType, 'accountType') : ''}
         ${(!isDomestic && subType === '전체') ? chartBlock('직투/ETF 비중', byInvestType, 'accountType') : ''}
-        ${stockChartBlockSortable(holdings)}
+        ${stockChartBlockSortable(holdings, false)}
         ${stockDetailButtonBlock(holdings)}
       </div>
     `;
@@ -2371,7 +2381,7 @@ function renderPanel(){
         ${accountTypeBarChartBlock()}
         ${sectorChartBlock(allHoldings)}
         ${regionChartBlock(allHoldings)}
-        ${stockChartBlockSortable(allHoldings)}
+        ${stockChartBlockSortable(allHoldings, true)}
         ${stockDetailButtonBlock(allHoldings)}
       </div>
     `;
@@ -2427,7 +2437,7 @@ function renderPanel(){
       ${(sectorAccordionShowRegionBar = true, '')}
       ${sectorChartBlock(acc.holdings)}
       ${regionChartBlock(acc.holdings)}
-      ${chartBlock('종목별 비중', byStock, 'stock')}
+      ${stockChartBlockSortable(acc.holdings, true)}
     </div>
   `;
 
@@ -2464,6 +2474,11 @@ function renderPanel(){
       accountTableSortMode = cell.dataset.sortcell;
       render();
     });
+  });
+  const stockSortChartAcc = document.getElementById('stock-sortable-chart');
+  if(stockSortChartAcc) stockSortChartAcc.querySelectorAll('.legend-item').forEach(el => {
+    el.style.cursor = 'pointer';
+    el.addEventListener('click', cycleStockSort);
   });
 }
 
