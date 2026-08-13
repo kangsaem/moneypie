@@ -122,6 +122,8 @@
   @media(max-width:640px){.donut-wrap-lg{width:276px;height:276px;}}
   .donut-wrap-xl{width:208px;height:208px;margin:0 auto;}
   @media(max-width:640px){.donut-wrap-xl{width:299px;height:299px;}}
+  .donut-wrap-xxl{width:224px;height:224px;margin:0 auto;}
+  @media(max-width:640px){.donut-wrap-xxl{width:322px;height:322px;}}
   .stock-donut-center-label{font-size:11px;}
   @media(max-width:640px){.stock-donut-center-label{font-size:16px;}}
   .mkt-card{
@@ -1362,10 +1364,20 @@ function combinedTripleDonutBlock(holdings, rightData, rightType, rightClickable
   </div>`;
 }
 
+function partialRingSVG(fraction, color, cx, cy, radius, strokeWidth, ringName, tooltipLabel){
+  const circumference = 2 * Math.PI * radius;
+  const dash = Math.max(0, Math.min(1, fraction)) * circumference;
+  const gap = circumference - dash;
+  return `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="${color}" stroke-width="${strokeWidth}" stroke-dasharray="${dash.toFixed(2)} ${gap.toFixed(2)}" stroke-dashoffset="0" transform="translate(${2*cx},0) scale(-1,1) rotate(-90 ${cx} ${cy})" data-ring="${ringName}"><title>${escapeHTML(tooltipLabel || '')} ${(fraction*100).toFixed(1)}%</title></circle>`;
+}
+
 function decorativeRingsSVG(ringSpecs, cx, cy, pieR, ringW){
-  // ringSpecs: [{data, type, name}, ...] 안쪽 -> 바깥쪽 순서
+  // ringSpecs: [{data, type, name}, ...] 또는 [{partial:{fraction,color}, name}, ...] 안쪽 -> 바깥쪽 순서
   return ringSpecs.map((spec, i) => {
     const r = pieR + ringW/2 + i*ringW;
+    if(spec.partial){
+      return partialRingSVG(spec.partial.fraction, spec.partial.color, cx, cy, r, ringW, spec.name, spec.partial.label);
+    }
     const ordered = reorderCashFirst(spec.data);
     return ringSegmentsSVG(ordered, spec.type, cx, cy, r, ringW, spec.name);
   }).join('');
@@ -1385,7 +1397,7 @@ function stockChartBlockSortable(holdings, allowRegion, extraRingSpecs){
   const outerSize = 192 + Math.max(rings.length - 2, 0) * ringW * 2;
   const cx = outerSize/2, cy = outerSize/2;
   const pieInner = donutSVG(ordered, 160, 'stock').replace(/^<div class="donut-wrap">/, '').replace(/<\/div>$/, '');
-  const sizeClass = rings.length >= 3 ? 'donut-wrap-xl' : 'donut-wrap-lg';
+  const sizeClass = rings.length >= 4 ? 'donut-wrap-xxl' : (rings.length >= 3 ? 'donut-wrap-xl' : 'donut-wrap-lg');
 
   return `<div class="chart-box" id="stock-sortable-chart">
     <div class="donut-wrap ${sizeClass}" style="position:relative;cursor:pointer;" data-donut-cycle>
@@ -2530,7 +2542,8 @@ function renderPanel(){
         ${stockChartBlockSortable(allHoldings, true, [
           { data: computeWeights(allHoldings, mergedRegionLabelFor), type: 'region', name: 'decorative-region' },
           { data: computeWeights(allHoldings, 'group'), type: 'group', name: 'decorative-sector' },
-          { data: computeWeights(_.flatMap(state.accounts, a => a.holdings.map(h => ({ ...h, accountTypeLabel: a.accountType || '직투' }))), 'accountTypeLabel'), type: 'accountType', name: 'decorative-accounttype' }
+          { data: computeWeights(_.flatMap(state.accounts, a => a.holdings.map(h => ({ ...h, accountTypeLabel: a.accountType || '직투' }))), 'accountTypeLabel'), type: 'accountType', name: 'decorative-accounttype' },
+          ...(state.creditLines.length > 0 && grandTotal > 0 ? [{ partial: { fraction: totalCreditUsed / grandTotal, color: '#B85450', label: '마통사용' }, name: 'decorative-credit' }] : [])
         ])}
         ${stockDetailButtonBlock(allHoldings)}
       </div>
