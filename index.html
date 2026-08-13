@@ -1546,7 +1546,10 @@ function cycleSectorSelection(){
   const total = sectorAccordionOrdered ? sectorAccordionOrdered.length : 0;
   if(total === 0) return;
   const curIdx = sectorAccordionOpenIdx === null ? -1 : parseInt(sectorAccordionOpenIdx, 10);
-  const nextIdx = curIdx + 1;
+  let nextIdx = curIdx + 1;
+  while(nextIdx < total && sectorAccordionOrdered[nextIdx] && sectorAccordionOrdered[nextIdx].label === '현금'){
+    nextIdx++;
+  }
   if(nextIdx >= total){
     const el = document.querySelector(`[data-sector-idx="${curIdx}"]`);
     if(el) el.click();
@@ -1564,6 +1567,7 @@ function bindSectorAccordionHandlers(){
     el.addEventListener('click', () => {
       const idx = el.dataset.sectorIdx;
       const label = el.dataset.sectorLabel;
+      if(label === '현금') return;
       if(sectorAccordionOpenIdx !== null && sectorAccordionOpenIdx !== idx){
         const prevSlot = document.getElementById('sector-slot-' + sectorAccordionOpenIdx);
         if(prevSlot) prevSlot.innerHTML = '';
