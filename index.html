@@ -1472,7 +1472,7 @@ function regionLegendHTML(holdings){
 
 function sectorChartBlock(holdings){
   const { legend, ordered } = sectorLegendHTML(holdings);
-  return `<div class="chart-box"><div style="cursor:pointer;" data-donut-cycle-sector>${donutSVG(ordered, 160, 'group')}</div><div class="legend">${legend}</div></div>`;
+  return `<div class="chart-box">${donutSVG(ordered, 160, 'group')}<div class="legend">${legend}</div></div>`;
 }
 
 function highlightChartSlice(triggerEl, idx, ringName){
@@ -1493,24 +1493,7 @@ function clearChartHighlight(triggerEl, ringName){
   }
 }
 
-function cycleSectorSelection(){
-  const total = sectorAccordionOrdered ? sectorAccordionOrdered.length : 0;
-  if(total === 0) return;
-  const curIdx = sectorAccordionOpenIdx === null ? -1 : parseInt(sectorAccordionOpenIdx, 10);
-  const nextIdx = curIdx + 1;
-  if(nextIdx >= total){
-    const el = document.querySelector(`[data-sector-idx="${curIdx}"]`);
-    if(el) el.click();
-    return;
-  }
-  const el = document.querySelector(`[data-sector-idx="${nextIdx}"]`);
-  if(el) el.click();
-}
-
 function bindSectorAccordionHandlers(){
-  document.querySelectorAll('[data-donut-cycle-sector]').forEach(el => {
-    el.addEventListener('click', cycleSectorSelection);
-  });
   document.querySelectorAll('[data-sector-idx]').forEach(el => {
     el.addEventListener('click', () => {
       const idx = el.dataset.sectorIdx;
@@ -1556,27 +1539,10 @@ function mergedRegionLabelFor(h){
 
 function regionChartBlock(holdings){
   const { legend, ordered } = regionLegendHTML(holdings);
-  return `<div class="chart-box"><div style="cursor:pointer;" data-donut-cycle-region>${donutSVG(ordered, 160, 'region')}</div><div class="legend">${legend}</div></div>`;
-}
-
-function cycleRegionSelection(){
-  const total = regionAccordionOrdered ? regionAccordionOrdered.length : 0;
-  if(total === 0) return;
-  const curIdx = regionAccordionOpenIdx === null ? -1 : parseInt(regionAccordionOpenIdx, 10);
-  const nextIdx = curIdx + 1;
-  if(nextIdx >= total){
-    const el = document.querySelector(`[data-region-idx="${curIdx}"]`);
-    if(el) el.click();
-    return;
-  }
-  const el = document.querySelector(`[data-region-idx="${nextIdx}"]`);
-  if(el) el.click();
+  return `<div class="chart-box">${donutSVG(ordered, 160, 'region')}<div class="legend">${legend}</div></div>`;
 }
 
 function bindRegionAccordionHandlers(){
-  document.querySelectorAll('[data-donut-cycle-region]').forEach(el => {
-    el.addEventListener('click', cycleRegionSelection);
-  });
   document.querySelectorAll('[data-region-idx]').forEach(el => {
     el.addEventListener('click', () => {
       const idx = el.dataset.regionIdx;
