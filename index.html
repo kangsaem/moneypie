@@ -1389,6 +1389,9 @@ function decorativeRingsSVG(ringSpecs, cx, cy, pieR, ringW){
 function stockLegendWithDividers(data, sortMode){
   if(data.length === 0) return '<div class="empty">데이터 없음</div>';
   let html = '<div class="legend">';
+  if(sortMode === 'group' && data.length > 0){
+    html += `<div style="font-size:10px;color:var(--text-dim);font-weight:700;margin-bottom:2px;">${escapeHTML(data[0].group||'')}</div>`;
+  }
   data.forEach((d,i) => {
     const rank = d.rank !== undefined ? d.rank : i;
     const rankCount = d.rankCount !== undefined ? d.rankCount : data.length;
@@ -1401,7 +1404,11 @@ function stockLegendWithDividers(data, sortMode){
       let showDivider = false;
       if(sortMode === 'group' && d.group !== next.group) showDivider = true;
       if(sortMode === 'region' && (d.region||'domestic') !== (next.region||'domestic')) showDivider = true;
-      if(showDivider) html += `<div style="border-top:1px solid var(--border);margin:6px 0;"></div>`;
+      if(showDivider){
+        const label = sortMode === 'group' ? escapeHTML(next.group||'') : '';
+        html += `<div style="border-top:1px solid var(--border);margin:6px 0 2px;"></div>`;
+        if(label) html += `<div style="font-size:10px;color:var(--text-dim);font-weight:700;margin-bottom:2px;">${label}</div>`;
+      }
     }
   });
   html += '</div>';
@@ -2766,7 +2773,7 @@ document.getElementById('importFile').addEventListener('change', (e) => {
 });
 
 document.addEventListener('click', (e) => {
-  const isTrigger = e.target.closest('[data-sector-idx],[data-region-idx],[data-memosnap],[data-editmemo],[data-savememo],[data-snap-idx],[data-cashbadge],#total-memo-edit,#total-memo-save');
+  const isTrigger = e.target.closest('[data-sector-idx],[data-region-idx],[data-memosnap],[data-editmemo],[data-savememo],[data-snap-idx],[data-cashbadge],[data-donut-cycle-sector],[data-donut-cycle-region],[data-donut-cycle],#total-memo-edit,#total-memo-save');
   const isInsideAccordion = e.target.closest('.floating-acc');
   if(isTrigger || isInsideAccordion) return;
   if(sectorAccordionOpenIdx !== null){
