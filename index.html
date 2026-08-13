@@ -1284,7 +1284,7 @@ let stockLegendSortMode = 'amount';
 let stockSortCycleActive = null;
 const STOCK_SORT_CYCLE_FULL = ['amount', 'group', 'region', 'name'];
 const STOCK_SORT_CYCLE_NO_REGION = ['amount', 'group', 'name'];
-const STOCK_SORT_LABEL = { amount:'평가액순', group:'섹터순', region:'지역순', name:'이름순' };
+const STOCK_SORT_LABEL = { amount:'금액순', group:'섹터순', region:'지역순', name:'이름순' };
 
 function computeStockDataWithMeta(holdings){
   const total = _.sumBy(holdings, 'amount');
