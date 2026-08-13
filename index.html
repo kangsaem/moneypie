@@ -1223,7 +1223,6 @@ function donutSVG(data, size, type){
   if(data.length === 0){
     return `<div class="donut-wrap"><svg width="100%" height="100%" viewBox="0 0 ${size} ${size}" style="display:block;">
       <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--text-dim)" stroke-width="1.5" stroke-dasharray="4 4"/>
-      <text x="${cx}" y="${cy}" fill="var(--text-dim)" font-size="12" text-anchor="middle" dominant-baseline="middle">데이터 없음</text>
     </svg></div>`;
   }
   const gradId = `hole-shadow-${++donutIdCounter}`;
@@ -1285,7 +1284,7 @@ let stockLegendSortMode = 'amount';
 let stockSortCycleActive = null;
 const STOCK_SORT_CYCLE_FULL = ['amount', 'group', 'region', 'name'];
 const STOCK_SORT_CYCLE_NO_REGION = ['amount', 'group', 'name'];
-const STOCK_SORT_LABEL = { amount:'평가액순', group:'섹터순', region:'국내/해외순', name:'이름순' };
+const STOCK_SORT_LABEL = { amount:'평가액순', group:'섹터순', region:'지역순', name:'이름순' };
 
 function computeStockDataWithMeta(holdings){
   const total = _.sumBy(holdings, 'amount');
@@ -1392,8 +1391,8 @@ function stockLegendWithDividers(data, sortMode){
   function sectionHeader(groupName){
     if(!groupName || groupName === '현금') return '';
     return `<div style="display:flex;align-items:center;gap:8px;margin:8px 0 4px;">
-      <span style="font-size:10px;color:var(--text-dim);font-weight:700;white-space:nowrap;">${escapeHTML(groupName)}</span>
-      <div style="flex:1;border-top:1px solid var(--border);"></div>
+      <span style="font-size:13px;color:var(--text);font-weight:700;white-space:nowrap;">${escapeHTML(groupName)}</span>
+      <div style="flex:1;border-top:1px solid var(--text-dim);"></div>
     </div>`;
   }
   if(sortMode === 'group' && data.length > 0){
@@ -1463,7 +1462,10 @@ function stockChartBlockSortable(holdings, allowRegion, extraRingSpecs){
 
 function chartBlock(title, data, type){
   const ordered = reorderCashFirst(data);
-  return `<div class="chart-box">${donutSVG(ordered, 160, type)}${legendHTML(ordered, type)}</div>`;
+  const centerLabelHtml = type === 'accountType'
+    ? `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;"><span class="stock-donut-center-label" style="color:var(--text-dim);font-weight:700;text-align:center;">유형</span></div>`
+    : '';
+  return `<div class="chart-box"><div style="position:relative;">${donutSVG(ordered, 160, type)}${centerLabelHtml}</div>${legendHTML(ordered, type)}</div>`;
 }
 
 let accountTableSortMode = null;
@@ -1519,7 +1521,7 @@ function regionLegendHTML(holdings){
 
 function sectorChartBlock(holdings){
   const { legend, ordered } = sectorLegendHTML(holdings);
-  return `<div class="chart-box"><div style="cursor:pointer;" data-donut-cycle-sector>${donutSVG(ordered, 160, 'group')}</div><div class="legend">${legend}</div></div>`;
+  return `<div class="chart-box"><div style="cursor:pointer;position:relative;" data-donut-cycle-sector>${donutSVG(ordered, 160, 'group')}<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;"><span class="stock-donut-center-label" style="color:var(--text-dim);font-weight:700;text-align:center;">섹터</span></div></div><div class="legend">${legend}</div></div>`;
 }
 
 function highlightChartSlice(triggerEl, idx, ringName){
@@ -1603,7 +1605,7 @@ function mergedRegionLabelFor(h){
 
 function regionChartBlock(holdings){
   const { legend, ordered } = regionLegendHTML(holdings);
-  return `<div class="chart-box"><div style="cursor:pointer;" data-donut-cycle-region>${donutSVG(ordered, 160, 'region')}</div><div class="legend">${legend}</div></div>`;
+  return `<div class="chart-box"><div style="cursor:pointer;position:relative;" data-donut-cycle-region>${donutSVG(ordered, 160, 'region')}<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;"><span class="stock-donut-center-label" style="color:var(--text-dim);font-weight:700;text-align:center;">지역</span></div></div><div class="legend">${legend}</div></div>`;
 }
 
 function cycleRegionSelection(){
