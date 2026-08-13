@@ -1392,7 +1392,7 @@ function stockLegendWithDividers(data, sortMode){
     if(!groupName || groupName === '현금') return '';
     return `<div style="display:flex;align-items:center;gap:8px;margin:8px 0 4px;">
       <span style="font-size:13px;color:var(--text);font-weight:700;white-space:nowrap;">${escapeHTML(groupName)}</span>
-      <div style="flex:1;border-top:1px solid var(--text-dim);"></div>
+      <div style="flex:1;border-top:1px dashed var(--text-dim);"></div>
     </div>`;
   }
   if(sortMode === 'group' && data.length > 0){
@@ -1414,7 +1414,7 @@ function stockLegendWithDividers(data, sortMode){
         if(sortMode === 'group'){
           html += sectionHeader(next.group);
         } else {
-          html += `<div style="border-top:1px solid var(--border);margin:6px 0;"></div>`;
+          html += `<div style="border-top:1px dashed var(--text-dim);margin:6px 0;"></div>`;
         }
       }
     }
