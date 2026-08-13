@@ -2707,14 +2707,16 @@ document.addEventListener('click', (e) => {
   if(sectorAccordionOpenIdx !== null){
     const s = document.getElementById('sector-slot-' + sectorAccordionOpenIdx);
     if(s) s.innerHTML = '';
+    const sectorTriggerEl = document.querySelector(`[data-sector-idx="${sectorAccordionOpenIdx}"]`);
+    if(sectorTriggerEl) clearChartHighlight(sectorTriggerEl, 'decorative-sector');
     sectorAccordionOpenIdx = null;
-    document.querySelectorAll('[data-slice-idx]').forEach(el => { el.style.opacity='1'; el.style.stroke='none'; el.style.strokeWidth='0'; });
   }
   if(regionAccordionOpenIdx !== null){
     const s = document.getElementById('region-slot-' + regionAccordionOpenIdx);
     if(s) s.innerHTML = '';
+    const regionTriggerEl = document.querySelector(`[data-region-idx="${regionAccordionOpenIdx}"]`);
+    if(regionTriggerEl) clearChartHighlight(regionTriggerEl, 'decorative-region');
     regionAccordionOpenIdx = null;
-    document.querySelectorAll('[data-slice-idx]').forEach(el => { el.style.opacity='1'; el.style.stroke='none'; el.style.strokeWidth='0'; });
   }
   if(openMemoSnapId){
     const s = document.getElementById('snap-memo-slot-' + openMemoSnapId);
