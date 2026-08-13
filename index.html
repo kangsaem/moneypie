@@ -1221,11 +1221,59 @@ function escapeHTML(s){
   return div.innerHTML;
 }
 
+let stockLegendSortMode = 'amount';
+const STOCK_SORT_CYCLE = ['amount', 'name', 'group', 'region'];
+const STOCK_SORT_LABEL = { amount:'평가액순', name:'가나다순', group:'섹터순', region:'국내-해외순' };
+
+function computeStockDataWithMeta(holdings){
+  const total = _.sumBy(holdings, 'amount');
+  const grouped = _.chain(holdings)
+    .groupBy('name')
+    .map((items, name) => ({
+      label: name,
+      amount: _.sumBy(items, 'amount'),
+      group: items[0].group,
+      region: items[0].region || 'domestic'
+    }))
+    .orderBy(['amount'], ['desc'])
+    .value();
+  return grouped.map(g => ({ ...g, pct: total ? (g.amount/total*100) : 0 }));
+}
+
+function sortStockData(data, mode){
+  const cash = data.filter(d => d.label === '현금');
+  const rest = data.filter(d => d.label !== '현금');
+  if(mode === 'name') rest.sort((a,b) => a.label.localeCompare(b.label, 'ko'));
+  else if(mode === 'group') rest.sort((a,b) => (a.group||'').localeCompare(b.group||'', 'ko'));
+  else if(mode === 'region') rest.sort((a,b) => {
+    const ra = (a.region||'domestic') === 'overseas' ? 1 : 0;
+    const rb = (b.region||'domestic') === 'overseas' ? 1 : 0;
+    return ra - rb;
+  });
+  else rest.sort((a,b) => b.amount - a.amount);
+  return [...cash, ...rest];
+}
+
+function cycleStockSort(){
+  const idx = STOCK_SORT_CYCLE.indexOf(stockLegendSortMode);
+  stockLegendSortMode = STOCK_SORT_CYCLE[(idx + 1) % STOCK_SORT_CYCLE.length];
+  render();
+}
+
+function stockChartBlockSortable(holdings){
+  const rawData = computeStockDataWithMeta(holdings);
+  const ordered = sortStockData(rawData, stockLegendSortMode);
+  return `<div class="chart-box" id="stock-sortable-chart">${donutSVG(ordered, 160, 'stock')}${legendHTML(ordered, 'stock')}
+    <div style="text-align:center;margin-top:4px;font-size:10px;color:var(--text-dim);">정렬: ${STOCK_SORT_LABEL[stockLegendSortMode]}</div>
+  </div>`;
+}
+
 function chartBlock(title, data, type){
   const ordered = reorderCashFirst(data);
   return `<div class="chart-box">${donutSVG(ordered, 160, type)}${legendHTML(ordered, type)}</div>`;
 }
 
+let accountTableSortMode = null;
 let sectorAccordionHoldings = [];
 let sectorAccordionOpenIdx = null;
 let sectorAccordionShowRegionBar = true;
@@ -1358,6 +1406,26 @@ function sortHoldingsForDisplay(holdings){
   return [...cashDom, ...cashOver, ...rest];
 }
 
+function sortHoldingsByMode(holdings, mode){
+  const cashDom = holdings.filter(h => isCashHolding(h) && (h.region||'domestic') !== 'overseas');
+  const cashOver = holdings.filter(h => isCashHolding(h) && h.region === 'overseas');
+  const rest = holdings.filter(h => !isCashHolding(h)).slice();
+  if(mode === 'name'){
+    rest.sort((a,b) => a.name.localeCompare(b.name, 'ko'));
+  } else if(mode === 'amount'){
+    rest.sort((a,b) => b.amount - a.amount);
+  } else if(mode === 'group'){
+    rest.sort((a,b) => (a.group||'').localeCompare(b.group||'', 'ko'));
+  } else if(mode === 'region'){
+    rest.sort((a,b) => {
+      const ra = (a.region||'domestic') === 'overseas' ? 1 : 0;
+      const rb = (b.region||'domestic') === 'overseas' ? 1 : 0;
+      return ra - rb;
+    });
+  }
+  return [...cashDom, ...cashOver, ...rest];
+}
+
 function mergeHoldingsByKey(holdings){
   const groups = _.groupBy(holdings, h => `${h.name}||${h.group}||${h.region||'domestic'}`);
   return Object.values(groups).map(list => ({
@@ -1366,24 +1434,26 @@ function mergeHoldingsByKey(holdings){
   }));
 }
 
-function holdingsTable(holdings, accId, editable, showRegion, alignMode, mergeDuplicates){
+function holdingsTable(holdings, accId, editable, showRegion, alignMode, mergeDuplicates, sortMode){
   if(showRegion === undefined) showRegion = true;
   if(holdings.length === 0) return '<div class="empty">등록된 종목이 없습니다.</div>';
   const source = mergeDuplicates ? mergeHoldingsByKey(holdings) : holdings;
-  const ordered = sortHoldingsForDisplay(source);
+  const ordered = sortMode ? sortHoldingsByMode(source, sortMode) : sortHoldingsForDisplay(source);
   const amountAlign = alignMode ? 'center' : 'left';
   const groupAlign = alignMode ? 'right' : 'left';
   const regionAlign = alignMode ? 'right' : 'left';
+  const sortable = !!editable;
+  const sortCursor = sortable ? 'cursor:pointer;' : '';
   const rows = ordered.map(h => {
     const isCash = isCashHolding(h);
     const displayName = isCash ? (h.region === 'overseas' ? '현금-해외' : '현금-국내') : escapeHTML(h.name);
     const cashColor = isCash ? 'color:#F0DA8C;font-weight:700;' : '';
     return `
     <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:14px;">
-      <div style="flex:2;min-width:90px;text-align:left;${cashColor}">${displayName}</div>
-      <div style="flex:1.6;min-width:125px;text-align:${amountAlign};${cashColor}" class="num">${h.amount.toLocaleString()}</div>
-      <div style="flex:1.3;min-width:80px;color:var(--text-dim);text-align:${groupAlign};">${escapeHTML(h.group)}</div>
-      ${showRegion ? `<div style="flex:1;min-width:70px;color:var(--text-dim);text-align:${regionAlign};">${h.region==='overseas'?'해외':'국내'}</div>` : ''}
+      <div style="flex:2;min-width:90px;text-align:left;${cashColor}${sortCursor}" ${sortable?'data-sortcell="name"':''}>${displayName}</div>
+      <div style="flex:1.6;min-width:125px;text-align:${amountAlign};${cashColor}${sortCursor}" class="num" ${sortable?'data-sortcell="amount"':''}>${h.amount.toLocaleString()}</div>
+      <div style="flex:1.3;min-width:80px;color:var(--text-dim);text-align:${groupAlign};${sortCursor}" ${sortable?'data-sortcell="group"':''}>${escapeHTML(h.group)}</div>
+      ${showRegion ? `<div style="flex:1;min-width:70px;color:var(--text-dim);text-align:${regionAlign};${sortCursor}" ${sortable?'data-sortcell="region"':''}>${h.region==='overseas'?'해외':'국내'}</div>` : ''}
       ${editable ? `<div style="flex-shrink:0;text-align:right;"><button class="del" data-edit="${h.id}">수정</button> <button class="del" data-del="${h.id}">삭제</button></div>` : ''}
     </div>`;
   }).join('');
@@ -1842,7 +1912,7 @@ function renderTabs(){
   tabs.innerHTML = html;
 
   tabs.querySelectorAll('[data-tab]').forEach(el => {
-    el.addEventListener('click', () => { state.activeId = el.dataset.tab; render(); });
+    el.addEventListener('click', () => { state.activeId = el.dataset.tab; accountTableSortMode = null; stockLegendSortMode = 'amount'; render(); });
   });
   document.getElementById('addAccountBtn').addEventListener('click', addAccount);
 }
@@ -2224,7 +2294,7 @@ function renderPanel(){
         ${sectorChartBlock(holdings)}
         ${(isDomestic && subType === '전체') ? chartBlock('계좌유형 비중', byAccountType, 'accountType') : ''}
         ${(!isDomestic && subType === '전체') ? chartBlock('직투/ETF 비중', byInvestType, 'accountType') : ''}
-        ${chartBlock('종목별 비중', byStock, 'stock')}
+        ${stockChartBlockSortable(holdings)}
         ${stockDetailButtonBlock(holdings)}
       </div>
     `;
@@ -2233,6 +2303,11 @@ function renderPanel(){
     if(stockDetailBtnRegion) stockDetailBtnRegion.addEventListener('click', toggleStockDetailAccordion);
     const cashBadgeRegion = panel.querySelector('[data-cashbadge]');
     if(cashBadgeRegion) cashBadgeRegion.addEventListener('click', () => toggleCashAmountAccordion(parseFloat(cashBadgeRegion.dataset.cashbadge), cashBadgeRegion));
+    const stockSortChart = document.getElementById('stock-sortable-chart');
+    if(stockSortChart) stockSortChart.querySelectorAll('.legend-item').forEach(el => {
+      el.style.cursor = 'pointer';
+      el.addEventListener('click', cycleStockSort);
+    });
     panel.querySelectorAll('[data-subtype]').forEach(btn => {
       btn.addEventListener('click', () => {
         if(isDomestic) state.domesticSubType = btn.dataset.subtype;
@@ -2269,7 +2344,7 @@ function renderPanel(){
         ${accountTypeBarChartBlock()}
         ${sectorChartBlock(allHoldings)}
         ${regionChartBlock(allHoldings)}
-        ${chartBlock('종목별 비중', byStock, 'stock')}
+        ${stockChartBlockSortable(allHoldings)}
         ${stockDetailButtonBlock(allHoldings)}
       </div>
     `;
@@ -2282,6 +2357,11 @@ function renderPanel(){
     if(stockDetailBtn) stockDetailBtn.addEventListener('click', toggleStockDetailAccordion);
     const cashBadgeTotal = panel.querySelector('[data-cashbadge]');
     if(cashBadgeTotal) cashBadgeTotal.addEventListener('click', () => toggleCashAmountAccordion(parseFloat(cashBadgeTotal.dataset.cashbadge), cashBadgeTotal));
+    const stockSortChartTotal = document.getElementById('stock-sortable-chart');
+    if(stockSortChartTotal) stockSortChartTotal.querySelectorAll('.legend-item').forEach(el => {
+      el.style.cursor = 'pointer';
+      el.addEventListener('click', cycleStockSort);
+    });
     return;
   }
 
@@ -2315,7 +2395,7 @@ function renderPanel(){
       </select>
       <button type="submit">추가</button>
     </form>
-    <div style="overflow-x:auto;">${holdingsTable(acc.holdings, acc.id, true)}</div>
+    <div style="overflow-x:auto;">${holdingsTable(acc.holdings, acc.id, true, true, false, false, accountTableSortMode)}</div>
     <div class="charts">
       ${(sectorAccordionShowRegionBar = true, '')}
       ${sectorChartBlock(acc.holdings)}
@@ -2351,6 +2431,12 @@ function renderPanel(){
   });
   panel.querySelectorAll('[data-edit]').forEach(btn => {
     btn.addEventListener('click', () => editHolding(acc.id, btn.dataset.edit));
+  });
+  panel.querySelectorAll('[data-sortcell]').forEach(cell => {
+    cell.addEventListener('click', () => {
+      accountTableSortMode = cell.dataset.sortcell;
+      render();
+    });
   });
 }
 
