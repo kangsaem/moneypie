@@ -1384,13 +1384,42 @@ function decorativeRingsSVG(ringSpecs, cx, cy, pieR, ringW){
   }).join('');
 }
 
+function stockLegendWithDividers(data, sortMode){
+  if(data.length === 0) return '<div class="empty">데이터 없음</div>';
+  let html = '<div class="legend">';
+  data.forEach((d,i) => {
+    const rank = d.rank !== undefined ? d.rank : i;
+    const rankCount = d.rankCount !== undefined ? d.rankCount : data.length;
+    const color = rankColor(d.label, rank, rankCount, 'stock');
+    const isCashLabel = d.label === '현금';
+    const cashStyle = isCashLabel ? 'color:#F0DA8C;font-weight:700;' : '';
+    html += `<div class="legend-item"><span class="swatch" style="background:${color}"></span><span class="legend-name" style="${cashStyle}">${escapeHTML(d.label)}</span><span class="legend-pct num" style="${cashStyle}">${d.pct.toFixed(1)}<span class="pct-sign">%</span></span></div>`;
+    if(i < data.length - 1){
+      const next = data[i+1];
+      let showDivider = false;
+      if(sortMode === 'group' && d.group !== next.group) showDivider = true;
+      if(sortMode === 'region' && (d.region||'domestic') !== (next.region||'domestic')) showDivider = true;
+      if(showDivider) html += `<div style="border-top:1px solid var(--border);margin:6px 0;"></div>`;
+    }
+  });
+  html += '</div>';
+  return html;
+}
+
 function stockChartBlockSortable(holdings, allowRegion, extraRingSpecs){
   stockSortCycleActive = allowRegion === false ? STOCK_SORT_CYCLE_NO_REGION : STOCK_SORT_CYCLE_FULL;
   if(!stockSortCycleActive.includes(stockLegendSortMode)) stockLegendSortMode = 'amount';
   const rawData = computeStockDataWithMeta(holdings);
   const ordered = sortStockData(rawData, stockLegendSortMode);
   const centerLabel = STOCK_SORT_LABEL[stockLegendSortMode];
-  const rings = extraRingSpecs || [];
+  // 외부링은 기본 투명도 0.5, 현재 정렬기준과 일치하는 링(섹터순->섹터링, 국내해외순->지역링)만 1.0
+  const rings = (extraRingSpecs || []).map(spec => {
+    if(spec.partial) return spec; // 마통사용 링은 별도 색/투명도 유지
+    let opacity = 0.5;
+    if(stockLegendSortMode === 'group' && spec.name === 'decorative-sector') opacity = 1;
+    if(stockLegendSortMode === 'region' && spec.name === 'decorative-region') opacity = 1;
+    return { ...spec, opacity };
+  });
 
   // 파이(종목) 자체 반지름은 다른 단독 도넛과 완전히 동일(size=160 기준 r=74)하게 유지하고,
   // 그 바깥에 링들을 간격 없이 안쪽부터 순서대로 이어 붙인다. 전체 캔버스만 그만큼 넓어진다.
@@ -1410,7 +1439,7 @@ function stockChartBlockSortable(holdings, allowRegion, extraRingSpecs){
       </svg>
       ${centerLabel ? `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;"><span class="stock-donut-center-label" style="color:var(--text-dim);font-weight:700;text-align:center;">${centerLabel}</span></div>` : ''}
     </div>
-    ${legendHTML(ordered, 'stock')}
+    ${stockLegendWithDividers(ordered, stockLegendSortMode)}
   </div>`;
 }
 
@@ -1472,7 +1501,7 @@ function regionLegendHTML(holdings){
 
 function sectorChartBlock(holdings){
   const { legend, ordered } = sectorLegendHTML(holdings);
-  return `<div class="chart-box">${donutSVG(ordered, 160, 'group')}<div class="legend">${legend}</div></div>`;
+  return `<div class="chart-box"><div style="cursor:pointer;" data-donut-cycle-sector>${donutSVG(ordered, 160, 'group')}</div><div class="legend">${legend}</div></div>`;
 }
 
 function highlightChartSlice(triggerEl, idx, ringName){
@@ -1493,7 +1522,24 @@ function clearChartHighlight(triggerEl, ringName){
   }
 }
 
+function cycleSectorSelection(){
+  const total = sectorAccordionOrdered ? sectorAccordionOrdered.length : 0;
+  if(total === 0) return;
+  const curIdx = sectorAccordionOpenIdx === null ? -1 : parseInt(sectorAccordionOpenIdx, 10);
+  const nextIdx = curIdx + 1;
+  if(nextIdx >= total){
+    const el = document.querySelector(`[data-sector-idx="${curIdx}"]`);
+    if(el) el.click();
+    return;
+  }
+  const el = document.querySelector(`[data-sector-idx="${nextIdx}"]`);
+  if(el) el.click();
+}
+
 function bindSectorAccordionHandlers(){
+  document.querySelectorAll('[data-donut-cycle-sector]').forEach(el => {
+    el.addEventListener('click', cycleSectorSelection);
+  });
   document.querySelectorAll('[data-sector-idx]').forEach(el => {
     el.addEventListener('click', () => {
       const idx = el.dataset.sectorIdx;
@@ -1539,10 +1585,27 @@ function mergedRegionLabelFor(h){
 
 function regionChartBlock(holdings){
   const { legend, ordered } = regionLegendHTML(holdings);
-  return `<div class="chart-box">${donutSVG(ordered, 160, 'region')}<div class="legend">${legend}</div></div>`;
+  return `<div class="chart-box"><div style="cursor:pointer;" data-donut-cycle-region>${donutSVG(ordered, 160, 'region')}</div><div class="legend">${legend}</div></div>`;
+}
+
+function cycleRegionSelection(){
+  const total = regionAccordionOrdered ? regionAccordionOrdered.length : 0;
+  if(total === 0) return;
+  const curIdx = regionAccordionOpenIdx === null ? -1 : parseInt(regionAccordionOpenIdx, 10);
+  const nextIdx = curIdx + 1;
+  if(nextIdx >= total){
+    const el = document.querySelector(`[data-region-idx="${curIdx}"]`);
+    if(el) el.click();
+    return;
+  }
+  const el = document.querySelector(`[data-region-idx="${nextIdx}"]`);
+  if(el) el.click();
 }
 
 function bindRegionAccordionHandlers(){
+  document.querySelectorAll('[data-donut-cycle-region]').forEach(el => {
+    el.addEventListener('click', cycleRegionSelection);
+  });
   document.querySelectorAll('[data-region-idx]').forEach(el => {
     el.addEventListener('click', () => {
       const idx = el.dataset.regionIdx;
