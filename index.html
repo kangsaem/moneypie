@@ -118,6 +118,8 @@
   .donut-wrap{width:160px;height:160px;margin:0 auto;}
   .donut-wrap svg{filter:drop-shadow(7px 10px 10px rgba(0,0,0,0.16)) drop-shadow(3px 4px 4px rgba(0,0,0,0.1));}
   @media(max-width:640px){.donut-wrap{width:230px;height:230px;}}
+  .donut-wrap-lg{width:200px;height:200px;margin:0 auto;}
+  @media(max-width:640px){.donut-wrap-lg{width:288px;height:288px;}}
   .mkt-card{
     flex-shrink:0;width:108px;
     background:var(--surface);border:1px solid var(--border);border-radius:8px;
@@ -1356,15 +1358,33 @@ function combinedTripleDonutBlock(holdings, rightData, rightType, rightClickable
   </div>`;
 }
 
+function decorativeOuterRingsSVG(sectorData, regionData, size){
+  const cx = size/2, cy = size/2;
+  const sectorR = size/2 - 24, sectorW = 6;
+  const regionR = size/2 - 14, regionW = 6;
+  const sectorOrdered = reorderCashFirst(sectorData);
+  const regionOrdered = reorderCashFirst(regionData);
+  return `<svg width="100%" height="100%" viewBox="0 0 ${size} ${size}" style="display:block;position:absolute;top:0;left:0;pointer-events:none;">
+    ${ringSegmentsSVG(sectorOrdered, 'group', cx, cy, sectorR, sectorW, 'decorative-sector')}
+    ${ringSegmentsSVG(regionOrdered, 'region', cx, cy, regionR, regionW, 'decorative-region')}
+  </svg>`;
+}
+
 function stockChartBlockSortable(holdings, allowRegion){
   stockSortCycleActive = allowRegion === false ? STOCK_SORT_CYCLE_NO_REGION : STOCK_SORT_CYCLE_FULL;
   if(!stockSortCycleActive.includes(stockLegendSortMode)) stockLegendSortMode = 'amount';
   const rawData = computeStockDataWithMeta(holdings);
   const ordered = sortStockData(rawData, stockLegendSortMode);
   const centerLabel = STOCK_SORT_LABEL[stockLegendSortMode];
+  const sectorData = computeWeights(holdings, 'group');
+  const regionData = computeWeights(holdings, mergedRegionLabelFor);
+  const innerSvg = donutSVG(ordered, 160, 'stock').replace(/^<div class="donut-wrap">/, '').replace(/<\/div>$/, '');
   return `<div class="chart-box" id="stock-sortable-chart">
-    <div style="position:relative;">
-      ${donutSVG(ordered, 160, 'stock')}
+    <div class="donut-wrap donut-wrap-lg" style="position:relative;">
+      <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:68%;height:68%;">
+        ${innerSvg}
+      </div>
+      ${decorativeOuterRingsSVG(sectorData, regionData, 200)}
       ${centerLabel ? `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;"><span style="font-size:13px;color:var(--text-dim);font-weight:700;text-align:center;">${centerLabel}</span></div>` : ''}
     </div>
     ${legendHTML(ordered, 'stock')}
@@ -2437,9 +2457,10 @@ function renderPanel(){
       ${subTabsHtml}
       <div class="charts">
         ${(sectorAccordionShowRegionBar = false, '')}
-        ${subType === '전체'
-          ? combinedTripleDonutBlock(holdings, (isDomestic ? byAccountType : byInvestType), 'accountType', false)
-          : combinedTripleDonutBlock(holdings, [], 'accountType', false)}
+        ${sectorChartBlock(holdings)}
+        ${(isDomestic && subType === '전체') ? chartBlock('계좌유형 비중', byAccountType, 'accountType') : ''}
+        ${(!isDomestic && subType === '전체') ? chartBlock('직투/ETF 비중', byInvestType, 'accountType') : ''}
+        ${stockChartBlockSortable(holdings, false)}
         ${stockDetailButtonBlock(holdings)}
       </div>
     `;
@@ -2448,7 +2469,7 @@ function renderPanel(){
     if(stockDetailBtnRegion) stockDetailBtnRegion.addEventListener('click', toggleStockDetailAccordion);
     const cashBadgeRegion = panel.querySelector('[data-cashbadge]');
     if(cashBadgeRegion) cashBadgeRegion.addEventListener('click', () => toggleCashAmountAccordion(parseFloat(cashBadgeRegion.dataset.cashbadge), cashBadgeRegion));
-    const stockSortChart = document.getElementById('triple-stock-legend');
+    const stockSortChart = document.getElementById('stock-sortable-chart');
     if(stockSortChart) stockSortChart.querySelectorAll('.legend-item').forEach(el => {
       el.style.cursor = 'pointer';
       el.addEventListener('click', cycleStockSort);
@@ -2487,7 +2508,9 @@ function renderPanel(){
         ${(sectorAccordionShowRegionBar = true, '')}
         ${state.creditLines.length > 0 ? creditGaugeChartBlock(true) : ''}
         ${accountTypeBarChartBlock()}
-        ${combinedTripleDonutBlock(allHoldings, null, 'region', true)}
+        ${sectorChartBlock(allHoldings)}
+        ${regionChartBlock(allHoldings)}
+        ${stockChartBlockSortable(allHoldings, true)}
         ${stockDetailButtonBlock(allHoldings)}
       </div>
     `;
@@ -2500,7 +2523,7 @@ function renderPanel(){
     if(stockDetailBtn) stockDetailBtn.addEventListener('click', toggleStockDetailAccordion);
     const cashBadgeTotal = panel.querySelector('[data-cashbadge]');
     if(cashBadgeTotal) cashBadgeTotal.addEventListener('click', () => toggleCashAmountAccordion(parseFloat(cashBadgeTotal.dataset.cashbadge), cashBadgeTotal));
-    const stockSortChartTotal = document.getElementById('triple-stock-legend');
+    const stockSortChartTotal = document.getElementById('stock-sortable-chart');
     if(stockSortChartTotal) stockSortChartTotal.querySelectorAll('.legend-item').forEach(el => {
       el.style.cursor = 'pointer';
       el.addEventListener('click', cycleStockSort);
@@ -2541,7 +2564,9 @@ function renderPanel(){
     <div style="overflow-x:auto;">${holdingsTable(acc.holdings, acc.id, true, true, false, false, accountTableSortMode)}</div>
     <div class="charts">
       ${(sectorAccordionShowRegionBar = true, '')}
-      ${combinedTripleDonutBlock(acc.holdings, null, 'region', true)}
+      ${sectorChartBlock(acc.holdings)}
+      ${regionChartBlock(acc.holdings)}
+      ${stockChartBlockSortable(acc.holdings, true)}
     </div>
   `;
 
@@ -2579,7 +2604,7 @@ function renderPanel(){
       render();
     });
   });
-  const stockSortChartAcc = document.getElementById('triple-stock-legend');
+  const stockSortChartAcc = document.getElementById('stock-sortable-chart');
   if(stockSortChartAcc) stockSortChartAcc.querySelectorAll('.legend-item').forEach(el => {
     el.style.cursor = 'pointer';
     el.addEventListener('click', cycleStockSort);
