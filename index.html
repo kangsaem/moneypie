@@ -120,6 +120,8 @@
   @media(max-width:640px){.donut-wrap{width:230px;height:230px;}}
   .donut-wrap-lg{width:192px;height:192px;margin:0 auto;}
   @media(max-width:640px){.donut-wrap-lg{width:276px;height:276px;}}
+  .donut-wrap-xl{width:208px;height:208px;margin:0 auto;}
+  @media(max-width:640px){.donut-wrap-xl{width:299px;height:299px;}}
   .mkt-card{
     flex-shrink:0;width:108px;
     background:var(--surface);border:1px solid var(--border);border-radius:8px;
@@ -1144,7 +1146,7 @@ function ringSegmentsSVG(data, type, cx, cy, radius, strokeWidth, ringName){
     const gap = circumference - dash;
     const dashoffset = -(cumulative * circumference);
     cumulative += frac;
-    return `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="${color}" stroke-width="${strokeWidth}" stroke-dasharray="${dash.toFixed(2)} ${gap.toFixed(2)}" stroke-dashoffset="${dashoffset.toFixed(2)}" transform="rotate(-90 ${cx} ${cy})" data-ring="${ringName}" data-slice-idx="${i}"><title>${escapeHTML(d.label)} ${d.pct.toFixed(1)}%</title></circle>`;
+    return `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="${color}" stroke-width="${strokeWidth}" stroke-dasharray="${dash.toFixed(2)} ${gap.toFixed(2)}" stroke-dashoffset="${dashoffset.toFixed(2)}" transform="translate(${2*cx},0) scale(-1,1) rotate(-90 ${cx} ${cy})" data-ring="${ringName}" data-slice-idx="${i}"><title>${escapeHTML(d.label)} ${d.pct.toFixed(1)}%</title></circle>`;
   }).join('');
 }
 
@@ -1358,41 +1360,40 @@ function combinedTripleDonutBlock(holdings, rightData, rightType, rightClickable
   </div>`;
 }
 
-function decorativeOuterRingsSVG(sectorData, regionData, cx, cy, sectorR, sectorW, regionR, regionW){
-  const sectorOrdered = reorderCashFirst(sectorData);
-  const regionOrdered = reorderCashFirst(regionData);
-  return `${ringSegmentsSVG(sectorOrdered, 'group', cx, cy, sectorR, sectorW, 'decorative-sector')}
-    ${ringSegmentsSVG(regionOrdered, 'region', cx, cy, regionR, regionW, 'decorative-region')}`;
+function decorativeRingsSVG(ringSpecs, cx, cy, pieR, ringW){
+  // ringSpecs: [{data, type, name}, ...] 안쪽 -> 바깥쪽 순서
+  return ringSpecs.map((spec, i) => {
+    const r = pieR + ringW/2 + i*ringW;
+    const ordered = reorderCashFirst(spec.data);
+    return ringSegmentsSVG(ordered, spec.type, cx, cy, r, ringW, spec.name);
+  }).join('');
 }
 
-function stockChartBlockSortable(holdings, allowRegion){
+function stockChartBlockSortable(holdings, allowRegion, extraRingSpecs){
   stockSortCycleActive = allowRegion === false ? STOCK_SORT_CYCLE_NO_REGION : STOCK_SORT_CYCLE_FULL;
   if(!stockSortCycleActive.includes(stockLegendSortMode)) stockLegendSortMode = 'amount';
   const rawData = computeStockDataWithMeta(holdings);
   const ordered = sortStockData(rawData, stockLegendSortMode);
   const centerLabel = STOCK_SORT_LABEL[stockLegendSortMode];
-  const sectorData = computeWeights(holdings, 'group');
-  const regionData = computeWeights(holdings, mergedRegionLabelFor);
+  const rings = extraRingSpecs || [];
 
   // 파이(종목) 자체 반지름은 다른 단독 도넛과 완전히 동일(size=160 기준 r=74)하게 유지하고,
-  // 그 바깥에 섹터링/지역링을 간격 없이 이어 붙인다. 전체 캔버스만 그만큼 넓어진다.
-  const pieR = 74, hole = pieR * 0.55;
-  const outerSize = 192;
+  // 그 바깥에 링들을 간격 없이 안쪽부터 순서대로 이어 붙인다. 전체 캔버스만 그만큼 넓어진다.
+  const pieR = 74, ringW = 8;
+  const outerSize = 192 + Math.max(rings.length - 2, 0) * ringW * 2;
   const cx = outerSize/2, cy = outerSize/2;
-  const sectorW = 8, regionW = 8;
-  const sR = pieR + sectorW/2;             // 78
-  const rR = sR + sectorW/2 + regionW/2;   // 86
   const pieInner = donutSVG(ordered, 160, 'stock').replace(/^<div class="donut-wrap">/, '').replace(/<\/div>$/, '');
+  const sizeClass = rings.length >= 3 ? 'donut-wrap-xl' : 'donut-wrap-lg';
 
   return `<div class="chart-box" id="stock-sortable-chart">
-    <div class="donut-wrap donut-wrap-lg" style="position:relative;">
+    <div class="donut-wrap ${sizeClass}" style="position:relative;cursor:pointer;" data-donut-cycle>
       <svg width="100%" height="100%" viewBox="0 0 ${outerSize} ${outerSize}" style="display:block;">
         <g transform="translate(${cx-80},${cy-80})">
           ${pieInner.replace(/^<svg[^>]*>/, '').replace(/<\/svg>$/, '')}
         </g>
-        ${decorativeOuterRingsSVG(sectorData, regionData, cx, cy, sR, sectorW, rR, regionW)}
+        ${decorativeRingsSVG(rings, cx, cy, pieR, ringW)}
       </svg>
-      ${centerLabel ? `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;"><span style="font-size:13px;color:var(--text-dim);font-weight:700;text-align:center;">${centerLabel}</span></div>` : ''}
+      ${centerLabel ? `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;"><span style="font-size:16px;color:var(--text-dim);font-weight:700;text-align:center;">${centerLabel}</span></div>` : ''}
     </div>
     ${legendHTML(ordered, 'stock')}
   </div>`;
@@ -2467,7 +2468,12 @@ function renderPanel(){
         ${sectorChartBlock(holdings)}
         ${(isDomestic && subType === '전체') ? chartBlock('계좌유형 비중', byAccountType, 'accountType') : ''}
         ${(!isDomestic && subType === '전체') ? chartBlock('직투/ETF 비중', byInvestType, 'accountType') : ''}
-        ${stockChartBlockSortable(holdings, false)}
+        ${stockChartBlockSortable(holdings, false, subType === '전체' ? [
+          { data: (isDomestic ? byAccountType : byInvestType), type: 'accountType', name: 'decorative-accounttype' },
+          { data: computeWeights(holdings, 'group'), type: 'group', name: 'decorative-sector' }
+        ] : [
+          { data: computeWeights(holdings, 'group'), type: 'group', name: 'decorative-sector' }
+        ])}
         ${stockDetailButtonBlock(holdings)}
       </div>
     `;
@@ -2481,6 +2487,8 @@ function renderPanel(){
       el.style.cursor = 'pointer';
       el.addEventListener('click', cycleStockSort);
     });
+    const stockDonut = stockSortChart ? stockSortChart.querySelector('[data-donut-cycle]') : null;
+    if(stockDonut) stockDonut.addEventListener('click', cycleStockSort);
     panel.querySelectorAll('[data-subtype]').forEach(btn => {
       btn.addEventListener('click', () => {
         if(isDomestic) state.domesticSubType = btn.dataset.subtype;
@@ -2517,7 +2525,11 @@ function renderPanel(){
         ${accountTypeBarChartBlock()}
         ${sectorChartBlock(allHoldings)}
         ${regionChartBlock(allHoldings)}
-        ${stockChartBlockSortable(allHoldings, true)}
+        ${stockChartBlockSortable(allHoldings, true, [
+          { data: computeWeights(allHoldings, mergedRegionLabelFor), type: 'region', name: 'decorative-region' },
+          { data: computeWeights(allHoldings, 'group'), type: 'group', name: 'decorative-sector' },
+          { data: computeWeights(_.flatMap(state.accounts, a => a.holdings.map(h => ({ ...h, accountTypeLabel: a.accountType || '직투' }))), 'accountTypeLabel'), type: 'accountType', name: 'decorative-accounttype' }
+        ])}
         ${stockDetailButtonBlock(allHoldings)}
       </div>
     `;
@@ -2535,6 +2547,8 @@ function renderPanel(){
       el.style.cursor = 'pointer';
       el.addEventListener('click', cycleStockSort);
     });
+    const stockDonutTotal = stockSortChartTotal ? stockSortChartTotal.querySelector('[data-donut-cycle]') : null;
+    if(stockDonutTotal) stockDonutTotal.addEventListener('click', cycleStockSort);
     return;
   }
 
@@ -2573,7 +2587,10 @@ function renderPanel(){
       ${(sectorAccordionShowRegionBar = true, '')}
       ${sectorChartBlock(acc.holdings)}
       ${regionChartBlock(acc.holdings)}
-      ${stockChartBlockSortable(acc.holdings, true)}
+      ${stockChartBlockSortable(acc.holdings, true, [
+        { data: computeWeights(acc.holdings, mergedRegionLabelFor), type: 'region', name: 'decorative-region' },
+        { data: computeWeights(acc.holdings, 'group'), type: 'group', name: 'decorative-sector' }
+      ])}
     </div>
   `;
 
@@ -2616,6 +2633,8 @@ function renderPanel(){
     el.style.cursor = 'pointer';
     el.addEventListener('click', cycleStockSort);
   });
+  const stockDonutAcc = stockSortChartAcc ? stockSortChartAcc.querySelector('[data-donut-cycle]') : null;
+  if(stockDonutAcc) stockDonutAcc.addEventListener('click', cycleStockSort);
 }
 
 function render(){
