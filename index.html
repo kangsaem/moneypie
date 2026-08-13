@@ -1389,8 +1389,15 @@ function decorativeRingsSVG(ringSpecs, cx, cy, pieR, ringW){
 function stockLegendWithDividers(data, sortMode){
   if(data.length === 0) return '<div class="empty">데이터 없음</div>';
   let html = '<div class="legend">';
+  function sectionHeader(groupName){
+    if(!groupName || groupName === '현금') return '';
+    return `<div style="display:flex;align-items:center;gap:8px;margin:8px 0 4px;">
+      <span style="font-size:10px;color:var(--text-dim);font-weight:700;white-space:nowrap;">${escapeHTML(groupName)}</span>
+      <div style="flex:1;border-top:1px solid var(--border);"></div>
+    </div>`;
+  }
   if(sortMode === 'group' && data.length > 0){
-    html += `<div style="font-size:10px;color:var(--text-dim);font-weight:700;margin-bottom:2px;">${escapeHTML(data[0].group||'')}</div>`;
+    html += sectionHeader(data[0].group);
   }
   data.forEach((d,i) => {
     const rank = d.rank !== undefined ? d.rank : i;
@@ -1405,9 +1412,11 @@ function stockLegendWithDividers(data, sortMode){
       if(sortMode === 'group' && d.group !== next.group) showDivider = true;
       if(sortMode === 'region' && (d.region||'domestic') !== (next.region||'domestic')) showDivider = true;
       if(showDivider){
-        const label = sortMode === 'group' ? escapeHTML(next.group||'') : '';
-        html += `<div style="border-top:1px solid var(--border);margin:6px 0 2px;"></div>`;
-        if(label) html += `<div style="font-size:10px;color:var(--text-dim);font-weight:700;margin-bottom:2px;">${label}</div>`;
+        if(sortMode === 'group'){
+          html += sectionHeader(next.group);
+        } else {
+          html += `<div style="border-top:1px solid var(--border);margin:6px 0;"></div>`;
+        }
       }
     }
   });
@@ -2617,8 +2626,8 @@ function renderPanel(){
         ${sectorChartBlock(allHoldings)}
         ${regionChartBlock(allHoldings)}
         ${stockChartBlockSortable(allHoldings, true, [
-          { data: computeWeights(allHoldings, mergedRegionLabelFor), type: 'region', name: 'decorative-region' },
           { data: computeWeights(allHoldings, 'group'), type: 'group', name: 'decorative-sector' },
+          { data: computeWeights(allHoldings, mergedRegionLabelFor), type: 'region', name: 'decorative-region' },
           { data: computeWeights(_.flatMap(state.accounts, a => a.holdings.map(h => ({ ...h, accountTypeLabel: a.accountType || '직투' }))), 'accountTypeLabel'), type: 'accountType', name: 'decorative-accounttype', opacity: 0.8 },
           ...(state.creditLines.length > 0 && grandTotal > 0 ? [{ partial: { fraction: totalCreditUsed / grandTotal, color: '#B85450', label: '마통사용' }, name: 'decorative-credit' }] : [])
         ])}
@@ -2680,8 +2689,8 @@ function renderPanel(){
       ${sectorChartBlock(acc.holdings)}
       ${regionChartBlock(acc.holdings)}
       ${stockChartBlockSortable(acc.holdings, true, [
-        { data: computeWeights(acc.holdings, mergedRegionLabelFor), type: 'region', name: 'decorative-region' },
-        { data: computeWeights(acc.holdings, 'group'), type: 'group', name: 'decorative-sector' }
+        { data: computeWeights(acc.holdings, 'group'), type: 'group', name: 'decorative-sector' },
+        { data: computeWeights(acc.holdings, mergedRegionLabelFor), type: 'region', name: 'decorative-region' }
       ])}
     </div>
   `;
