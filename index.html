@@ -1243,14 +1243,26 @@ function computeStockDataWithMeta(holdings){
 function sortStockData(data, mode){
   const cash = data.filter(d => d.label === '현금');
   const rest = data.filter(d => d.label !== '현금');
-  if(mode === 'name') rest.sort((a,b) => a.label.localeCompare(b.label, 'ko'));
-  else if(mode === 'group') rest.sort((a,b) => (a.group||'').localeCompare(b.group||'', 'ko'));
-  else if(mode === 'region') rest.sort((a,b) => {
-    const ra = (a.region||'domestic') === 'overseas' ? 1 : 0;
-    const rb = (b.region||'domestic') === 'overseas' ? 1 : 0;
-    return ra - rb;
-  });
-  else rest.sort((a,b) => b.amount - a.amount);
+  if(mode === 'name'){
+    rest.sort((a,b) => bilingualNameCompare(a.label, b.label));
+  } else if(mode === 'group'){
+    const groupTotals = {};
+    rest.forEach(d => { groupTotals[d.group] = (groupTotals[d.group]||0) + d.amount; });
+    rest.sort((a,b) => {
+      const diff = (groupTotals[b.group]||0) - (groupTotals[a.group]||0);
+      if(diff !== 0) return diff;
+      return b.amount - a.amount;
+    });
+  } else if(mode === 'region'){
+    rest.sort((a,b) => {
+      const ra = (a.region||'domestic') === 'overseas' ? 1 : 0;
+      const rb = (b.region||'domestic') === 'overseas' ? 1 : 0;
+      if(ra !== rb) return ra - rb;
+      return b.amount - a.amount;
+    });
+  } else {
+    rest.sort((a,b) => b.amount - a.amount);
+  }
   return [...cash, ...rest];
 }
 
@@ -1406,21 +1418,36 @@ function sortHoldingsForDisplay(holdings){
   return [...cashDom, ...cashOver, ...rest];
 }
 
+function bilingualNameCompare(a, b){
+  const isEnA = /^[A-Za-z]/.test(a);
+  const isEnB = /^[A-Za-z]/.test(b);
+  if(isEnA && !isEnB) return -1;
+  if(!isEnA && isEnB) return 1;
+  return a.localeCompare(b, isEnA ? 'en' : 'ko');
+}
+
 function sortHoldingsByMode(holdings, mode){
   const cashDom = holdings.filter(h => isCashHolding(h) && (h.region||'domestic') !== 'overseas');
   const cashOver = holdings.filter(h => isCashHolding(h) && h.region === 'overseas');
   const rest = holdings.filter(h => !isCashHolding(h)).slice();
   if(mode === 'name'){
-    rest.sort((a,b) => a.name.localeCompare(b.name, 'ko'));
+    rest.sort((a,b) => bilingualNameCompare(a.name, b.name));
   } else if(mode === 'amount'){
     rest.sort((a,b) => b.amount - a.amount);
   } else if(mode === 'group'){
-    rest.sort((a,b) => (a.group||'').localeCompare(b.group||'', 'ko'));
+    const groupTotals = {};
+    rest.forEach(h => { groupTotals[h.group] = (groupTotals[h.group]||0) + h.amount; });
+    rest.sort((a,b) => {
+      const diff = (groupTotals[b.group]||0) - (groupTotals[a.group]||0);
+      if(diff !== 0) return diff;
+      return b.amount - a.amount;
+    });
   } else if(mode === 'region'){
     rest.sort((a,b) => {
       const ra = (a.region||'domestic') === 'overseas' ? 1 : 0;
       const rb = (b.region||'domestic') === 'overseas' ? 1 : 0;
-      return ra - rb;
+      if(ra !== rb) return ra - rb;
+      return b.amount - a.amount;
     });
   }
   return [...cashDom, ...cashOver, ...rest];
