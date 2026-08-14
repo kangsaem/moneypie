@@ -1148,7 +1148,7 @@ function deleteHolding(accId, holdId){
   const acc = getAccount(accId);
   const h = acc.holdings.find(x => x.id === holdId);
   const name = h ? (isCashHolding(h) ? (h.region === 'overseas' ? '현금-해외' : '현금-국내') : h.name) : '이 종목';
-  showConfirmModal(`${pinkSpan(name)}을(를) 삭제할까요?`, '삭제', '#B85450', () => {
+  showConfirmModal(`${pinkSpan(name)} 삭제할까요?`, '삭제', '#B85450', () => {
     acc.holdings = acc.holdings.filter(h => h.id !== holdId);
     save(); render();
   });
@@ -1229,7 +1229,9 @@ async function confirmSaveSnapshot(){
   }
 }
 function deleteSnapshot(id){
-  showConfirmModal('월별 자산을 삭제할까요?', '삭제', '#B85450', () => {
+  const snap = state.snapshots.find(s => s.id === id);
+  const label = snap ? shortMonthLabel(snap.label) : '이 월별';
+  showConfirmModal(`${pinkSpan(label)} 데이터를 삭제할까요?`, '삭제', '#B85450', () => {
     state.snapshots = state.snapshots.filter(s => s.id !== id);
     saveSnapshots(); render();
   });
