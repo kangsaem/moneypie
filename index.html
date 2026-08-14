@@ -837,7 +837,7 @@ function importData(file){
         await saveSnapshots();
         await saveCreditLines();
         render();
-        alert('데이터를 불러왔습니다.');
+        showNoticeModal('데이터를 불러왔습니다.');
       });
     }catch(err){
       alert('파일을 읽을 수 없습니다. 올바른 백업 파일인지 확인해주세요.');
@@ -2818,7 +2818,7 @@ function renderPanel(){
         <input class="name" placeholder="종목 (예: 삼성전자, 코드는 069500)" required autocomplete="off" style="width:100%;box-sizing:border-box;">
         <div id="nameAutocomplete" style="position:absolute;top:100%;left:0;right:0;z-index:20;"></div>
       </div>
-      <input class="amount" type="number" placeholder="평가액" required min="0">
+      <input class="amount" type="number" placeholder="평가액" required min="0" style="text-align:right;">
       <input class="group" placeholder="섹터 (예: 반도체)">
       <select class="region">
         <option value="domestic">국내</option>
