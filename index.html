@@ -218,6 +218,21 @@
   </div>
 </div>
 
+<div id="addAccountModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;align-items:center;justify-content:center;padding:20px;">
+  <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:24px;width:320px;max-width:100%;">
+    <h3 style="margin:0 0 16px;font-size:16px;font-weight:700;">계좌 추가</h3>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <input id="addAccountName" placeholder="계좌명" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:14px;font-family:inherit;">
+      <select id="addAccountType" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:14px;font-family:inherit;">
+      </select>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
+        <button class="btn" id="addAccountCancelBtn">취소</button>
+        <button class="btn btn-primary" id="addAccountSaveBtn">추가</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
@@ -787,13 +802,22 @@ function importData(file){
 function getAccount(id){ return state.accounts.find(a => a.id === id); }
 
 function addAccount(){
-  const name = prompt('새 계좌 이름을 입력하세요', '계좌 ' + (state.accounts.length+1));
-  if(!name) return;
-  const typeInput = prompt(`계좌 유형을 입력하세요 (${ACCOUNT_TYPES.join('/')})`, '직투');
-  const accountType = ACCOUNT_TYPES.includes((typeInput||'').trim()) ? typeInput.trim() : '직투';
+  document.getElementById('addAccountName').value = '계좌 ' + (state.accounts.length+1);
+  const typeSelect = document.getElementById('addAccountType');
+  typeSelect.innerHTML = ACCOUNT_TYPES.map(t => `<option value="${t}" ${t==='직투'?'selected':''}>${t}</option>`).join('');
+  document.getElementById('addAccountModal').style.display = 'flex';
+}
+function closeAddAccountModal(){
+  document.getElementById('addAccountModal').style.display = 'none';
+}
+function saveAddAccountModal(){
+  const name = document.getElementById('addAccountName').value.trim();
+  const accountType = document.getElementById('addAccountType').value;
+  if(!name){ alert('계좌명을 입력해주세요.'); return; }
   const acc = { id: uid(), name, accountType, holdings: [] };
   state.accounts.push(acc);
   state.activeId = acc.id;
+  closeAddAccountModal();
   save(); render();
 }
 function changeAccountType(id){
@@ -2756,6 +2780,11 @@ function render(){
 
 document.getElementById('editCancelBtn').addEventListener('click', closeEditModal);
 document.getElementById('editCreditCancelBtn').addEventListener('click', closeEditCreditModal);
+document.getElementById('addAccountCancelBtn').addEventListener('click', closeAddAccountModal);
+document.getElementById('addAccountSaveBtn').addEventListener('click', saveAddAccountModal);
+document.getElementById('addAccountModal').addEventListener('click', (e) => {
+  if(e.target.id === 'addAccountModal') closeAddAccountModal();
+});
 document.getElementById('editCreditSaveBtn').addEventListener('click', saveEditCreditModal);
 document.getElementById('editCreditModal').addEventListener('click', (e) => {
   if(e.target.id === 'editCreditModal') closeEditCreditModal();
