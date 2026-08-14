@@ -1856,7 +1856,7 @@ function holdingsTable(holdings, accId, editable, showRegion, alignMode, mergeDu
   if(holdings.length === 0) return '<div class="empty">등록된 종목이 없습니다.</div>';
   const source = mergeDuplicates ? mergeHoldingsByKey(holdings) : holdings;
   const ordered = sortMode ? sortHoldingsByMode(source, sortMode) : sortHoldingsForDisplay(source);
-  const amountAlign = alignMode ? 'center' : 'left';
+  const amountAlign = 'right';
   const groupAlign = alignMode ? 'right' : 'left';
   const regionAlign = alignMode ? 'right' : 'left';
   const sortable = !!editable;
