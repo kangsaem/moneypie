@@ -218,6 +218,33 @@
   </div>
 </div>
 
+<div id="editAccountNameModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;align-items:center;justify-content:center;padding:20px;">
+  <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:24px;width:320px;max-width:100%;">
+    <h3 style="margin:0 0 16px;font-size:16px;font-weight:700;">계좌 이름 수정</h3>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <input id="editAccountNameInput" placeholder="계좌 이름" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:14px;font-family:inherit;">
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
+        <button class="btn" id="editAccountNameCancelBtn">취소</button>
+        <button class="btn btn-primary" id="editAccountNameSaveBtn">저장</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="saveSnapshotModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:2000;align-items:center;justify-content:center;padding:20px;">
+  <div style="background:#EDEDED;border-radius:10px;padding:24px;width:320px;max-width:100%;">
+    <h3 style="margin:0 0 16px;font-size:16px;font-weight:700;color:#333333;">월별 자산 저장</h3>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <label style="font-size:12px;color:#555555;">몇 월인가요? (예: 202608)</label>
+      <input id="saveSnapshotInput" placeholder="YYYYMM" style="background:#FFFFFF;border:1px solid #C9C9C9;color:#333333;padding:8px 10px;border-radius:6px;font-size:14px;font-family:inherit;">
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
+        <button id="saveSnapshotCancelBtn" style="background:none;border:1px solid #C9C9C9;color:#555555;padding:7px 14px;border-radius:6px;cursor:pointer;font-size:14px;font-family:inherit;font-weight:600;">취소</button>
+        <button id="saveSnapshotConfirmBtn" style="border:none;background:#4FC3F7;color:#111;padding:7px 14px;border-radius:6px;cursor:pointer;font-size:14px;font-family:inherit;font-weight:700;">저장</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div id="confirmModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:2000;align-items:center;justify-content:center;padding:20px;">
   <div style="background:#EDEDED;border-radius:10px;padding:24px;width:320px;max-width:100%;">
     <p id="confirmModalMessage" style="margin:0 0 20px;font-size:14px;color:#333333;white-space:pre-wrap;line-height:1.5;"></p>
@@ -789,7 +816,7 @@ function importData(file){
     try{
       const payload = JSON.parse(e.target.result);
       if(!payload.accounts) throw new Error('invalid file');
-      showConfirmModal('현재 데이터를 덮어쓰고 불러온 파일로 교체할까요?', true, async () => {
+      showConfirmModal('현재 데이터를 덮어쓰고 불러온 파일로 교체할까요?', '가져오기', '#4FC3F7', async () => {
         state.accounts = normalizeAccounts(payload.accounts);
         state.snapshots = normalizeSnapshots(payload.snapshots);
         state.creditLines = normalizeCreditLines(payload.creditLines);
@@ -813,12 +840,16 @@ function importData(file){
 function getAccount(id){ return state.accounts.find(a => a.id === id); }
 
 let confirmModalCallback = null;
-function showConfirmModal(message, danger, onConfirm){
-  document.getElementById('confirmModalMessage').textContent = message;
+const PINK_HIGHLIGHT = '#C2477C';
+function pinkSpan(text){
+  return `<span style="color:${PINK_HIGHLIGHT};font-weight:700;">${escapeHTML(text)}</span>`;
+}
+function showConfirmModal(messageHtml, buttonLabel, buttonColor, onConfirm){
+  document.getElementById('confirmModalMessage').innerHTML = messageHtml;
   const confirmBtn = document.getElementById('confirmModalConfirmBtn');
-  confirmBtn.textContent = danger ? '삭제' : '확인';
-  confirmBtn.style.background = danger ? '#B85450' : '#4FC3F7';
-  confirmBtn.style.color = danger ? '#fff' : '#111';
+  confirmBtn.textContent = buttonLabel;
+  confirmBtn.style.background = buttonColor;
+  confirmBtn.style.color = (buttonColor === '#4FC3F7') ? '#111' : '#fff';
   confirmModalCallback = onConfirm;
   document.getElementById('confirmModal').style.display = 'flex';
 }
@@ -854,16 +885,29 @@ function changeAccountType(id){
   acc.accountType = typeInput.trim();
   save(); render();
 }
+let editAccountNameContext = null;
 function renameAccount(id){
   const acc = getAccount(id);
-  const name = prompt('계좌 이름 수정', acc.name);
-  if(!name) return;
+  editAccountNameContext = id;
+  document.getElementById('editAccountNameInput').value = acc.name;
+  document.getElementById('editAccountNameModal').style.display = 'flex';
+}
+function closeEditAccountNameModal(){
+  document.getElementById('editAccountNameModal').style.display = 'none';
+  editAccountNameContext = null;
+}
+function saveEditAccountNameModal(){
+  if(!editAccountNameContext) return;
+  const acc = getAccount(editAccountNameContext);
+  const name = document.getElementById('editAccountNameInput').value.trim();
+  if(!name){ alert('계좌 이름을 입력해주세요.'); return; }
   acc.name = name;
+  closeEditAccountNameModal();
   save(); render();
 }
 function deleteAccount(id){
   if(state.accounts.length <= 1){ alert('최소 한 개의 계좌는 있어야 합니다.'); return; }
-  showConfirmModal('이 계좌와 보유 종목 데이터를 삭제할까요?', true, () => {
+  showConfirmModal('이 계좌와 보유 종목 데이터를 삭제할까요?', '삭제', '#B85450', () => {
     state.accounts = state.accounts.filter(a => a.id !== id);
     if(state.activeId === id){
       state.activeId = state.accounts[0].id;
@@ -906,7 +950,7 @@ function saveEditCreditModal(){
   render();
 }
 function deleteCreditLine(id){
-  showConfirmModal('이 마통 항목을 삭제할까요?', true, () => {
+  showConfirmModal('이 마통 항목을 삭제할까요?', '삭제', '#B85450', () => {
     state.creditLines = state.creditLines.filter(c => c.id !== id);
     saveCreditLines(); render();
   });
@@ -1088,7 +1132,7 @@ function deleteHolding(accId, holdId){
   const acc = getAccount(accId);
   const h = acc.holdings.find(x => x.id === holdId);
   const name = h ? (isCashHolding(h) ? (h.region === 'overseas' ? '현금-해외' : '현금-국내') : h.name) : '이 종목';
-  showConfirmModal(`"${name}"을(를) 삭제할까요?`, true, () => {
+  showConfirmModal(`${pinkSpan(name)}을(를) 삭제할까요?`, '삭제', '#B85450', () => {
     acc.holdings = acc.holdings.filter(h => h.id !== holdId);
     save(); render();
   });
@@ -1130,9 +1174,16 @@ function saveEditModal(){
   render();
 }
 
-async function saveSnapshot(){
+function saveSnapshot(){
   const defaultLabel = currentMonthLabel();
-  const input = prompt('몇 월인가요? (예:202012)', defaultLabel);
+  document.getElementById('saveSnapshotInput').value = defaultLabel;
+  document.getElementById('saveSnapshotModal').style.display = 'flex';
+}
+function closeSaveSnapshotModal(){
+  document.getElementById('saveSnapshotModal').style.display = 'none';
+}
+async function confirmSaveSnapshot(){
+  const input = document.getElementById('saveSnapshotInput').value.trim();
   if(!input) return;
   const label = normalizeLabel(input);
   if(label.length !== 6){ alert('YYYYMM 형식의 숫자 6자리로 입력해주세요. (예: 202608)'); return; }
@@ -1150,17 +1201,19 @@ async function saveSnapshot(){
     state.snapshots.push(snap);
     state.snapshots.sort((a,b)=> a.label.localeCompare(b.label));
     await saveSnapshots();
-    alert(`"${label}" 데이터가 저장되었습니다.`);
+    closeSaveSnapshotModal();
+    alert(`${shortMonthLabel(label)} 데이터가 저장되었습니다.`);
     render();
   };
+  closeSaveSnapshotModal();
   if(existing){
-    showConfirmModal(`"${label}" 데이터가 이미 있습니다. 덮어쓸까요?`, true, doSave);
+    showConfirmModal(`${pinkSpan(shortMonthLabel(label))} 데이터가 이미 있습니다. 덮어쓸까요?`, '저장', '#4FC3F7', doSave);
   } else {
     await doSave();
   }
 }
 function deleteSnapshot(id){
-  showConfirmModal('월별 자산을 삭제할까요?', true, () => {
+  showConfirmModal('월별 자산을 삭제할까요?', '삭제', '#B85450', () => {
     state.snapshots = state.snapshots.filter(s => s.id !== id);
     saveSnapshots(); render();
   });
@@ -1168,7 +1221,7 @@ function deleteSnapshot(id){
 function loadSnapshotForEdit(id){
   const snap = state.snapshots.find(s => s.id === id);
   if(!snap) return;
-  showConfirmModal(`"${snap.label}" 데이터를 현재 화면으로 불러올까요?\n지금 입력되어 있는 계좌 데이터는 이걸로 덮어써집니다.\n수정 후 "이번달 자산 저장"에서 같은 월(${snap.label})을 입력하면 월별 자산이 갱신됩니다.`, true, () => {
+  showConfirmModal(`${pinkSpan(shortMonthLabel(snap.label))} 데이터를 불러옵니다. 현재 입력 중인 데이터는 사라집니다. 이번달 자산 저장시 같은 월을 입력하면 갱신됩니다.`, '수정', '#4FC3F7', () => {
     state.accounts = JSON.parse(JSON.stringify(snap.accounts));
     state.creditLines = JSON.parse(JSON.stringify(snap.creditLines || []));
     if(state.accounts.length === 0){
@@ -2827,6 +2880,16 @@ document.getElementById('confirmModal').addEventListener('click', (e) => {
   if(e.target.id === 'confirmModal') closeConfirmModal();
 });
 document.getElementById('addAccountCancelBtn').addEventListener('click', closeAddAccountModal);
+document.getElementById('editAccountNameCancelBtn').addEventListener('click', closeEditAccountNameModal);
+document.getElementById('editAccountNameSaveBtn').addEventListener('click', saveEditAccountNameModal);
+document.getElementById('editAccountNameModal').addEventListener('click', (e) => {
+  if(e.target.id === 'editAccountNameModal') closeEditAccountNameModal();
+});
+document.getElementById('saveSnapshotCancelBtn').addEventListener('click', closeSaveSnapshotModal);
+document.getElementById('saveSnapshotConfirmBtn').addEventListener('click', confirmSaveSnapshot);
+document.getElementById('saveSnapshotModal').addEventListener('click', (e) => {
+  if(e.target.id === 'saveSnapshotModal') closeSaveSnapshotModal();
+});
 document.getElementById('addAccountSaveBtn').addEventListener('click', saveAddAccountModal);
 document.getElementById('addAccountModal').addEventListener('click', (e) => {
   if(e.target.id === 'addAccountModal') closeAddAccountModal();
@@ -2847,7 +2910,7 @@ setupStockNameAutocomplete(
 );
 
 async function handleResetAllData(){
-  showConfirmModal('모든 계좌, 종목, 월별 자산, 마통 데이터를 삭제할까요? 되돌릴 수 없습니다.', true, async () => {
+  showConfirmModal('모든 계좌, 종목, 월별 자산, 마통 데이터를 삭제할까요? 되돌릴 수 없습니다.', '삭제', '#B85450', async () => {
     state.accounts = [{ id: uid(), name: '계좌 1', holdings: [] }];
     state.snapshots = [];
     state.creditLines = [];
