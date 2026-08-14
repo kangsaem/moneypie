@@ -218,6 +218,16 @@
   </div>
 </div>
 
+<div id="confirmModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:2000;align-items:center;justify-content:center;padding:20px;">
+  <div style="background:#EDEDED;border-radius:10px;padding:24px;width:320px;max-width:100%;">
+    <p id="confirmModalMessage" style="margin:0 0 20px;font-size:14px;color:#333333;white-space:pre-wrap;line-height:1.5;"></p>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button id="confirmModalCancelBtn" style="background:none;border:1px solid #C9C9C9;color:#555555;padding:7px 14px;border-radius:6px;cursor:pointer;font-size:14px;font-family:inherit;font-weight:600;">취소</button>
+      <button id="confirmModalConfirmBtn" style="border:none;padding:7px 14px;border-radius:6px;cursor:pointer;font-size:14px;font-family:inherit;font-weight:700;">확인</button>
+    </div>
+  </div>
+</div>
+
 <div id="addAccountModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;align-items:center;justify-content:center;padding:20px;">
   <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:24px;width:320px;max-width:100%;">
     <h3 style="margin:0 0 16px;font-size:16px;font-weight:700;">계좌 추가</h3>
@@ -779,19 +789,20 @@ function importData(file){
     try{
       const payload = JSON.parse(e.target.result);
       if(!payload.accounts) throw new Error('invalid file');
-      if(!confirm('현재 데이터를 덮어쓰고 불러온 파일로 교체할까요?')) return;
-      state.accounts = normalizeAccounts(payload.accounts);
-      state.snapshots = normalizeSnapshots(payload.snapshots);
-      state.creditLines = normalizeCreditLines(payload.creditLines);
-      if(state.accounts.length === 0){
-        state.accounts = [{ id: uid(), name: '계좌 1', holdings: [] }];
-      }
-      state.activeId = '__total__';
-      await save();
-      await saveSnapshots();
-      await saveCreditLines();
-      render();
-      alert('데이터를 불러왔습니다.');
+      showConfirmModal('현재 데이터를 덮어쓰고 불러온 파일로 교체할까요?', true, async () => {
+        state.accounts = normalizeAccounts(payload.accounts);
+        state.snapshots = normalizeSnapshots(payload.snapshots);
+        state.creditLines = normalizeCreditLines(payload.creditLines);
+        if(state.accounts.length === 0){
+          state.accounts = [{ id: uid(), name: '계좌 1', holdings: [] }];
+        }
+        state.activeId = '__total__';
+        await save();
+        await saveSnapshots();
+        await saveCreditLines();
+        render();
+        alert('데이터를 불러왔습니다.');
+      });
     }catch(err){
       alert('파일을 읽을 수 없습니다. 올바른 백업 파일인지 확인해주세요.');
     }
@@ -800,6 +811,21 @@ function importData(file){
 }
 
 function getAccount(id){ return state.accounts.find(a => a.id === id); }
+
+let confirmModalCallback = null;
+function showConfirmModal(message, danger, onConfirm){
+  document.getElementById('confirmModalMessage').textContent = message;
+  const confirmBtn = document.getElementById('confirmModalConfirmBtn');
+  confirmBtn.textContent = danger ? '삭제' : '확인';
+  confirmBtn.style.background = danger ? '#B85450' : '#4FC3F7';
+  confirmBtn.style.color = danger ? '#fff' : '#111';
+  confirmModalCallback = onConfirm;
+  document.getElementById('confirmModal').style.display = 'flex';
+}
+function closeConfirmModal(){
+  document.getElementById('confirmModal').style.display = 'none';
+  confirmModalCallback = null;
+}
 
 function addAccount(){
   document.getElementById('addAccountName').value = '계좌 ' + (state.accounts.length+1);
@@ -837,12 +863,13 @@ function renameAccount(id){
 }
 function deleteAccount(id){
   if(state.accounts.length <= 1){ alert('최소 한 개의 계좌는 있어야 합니다.'); return; }
-  if(!confirm('이 계좌와 보유 종목 데이터를 삭제할까요?')) return;
-  state.accounts = state.accounts.filter(a => a.id !== id);
-  if(state.activeId === id){
-    state.activeId = state.accounts[0].id;
-  }
-  save(); render();
+  showConfirmModal('이 계좌와 보유 종목 데이터를 삭제할까요?', true, () => {
+    state.accounts = state.accounts.filter(a => a.id !== id);
+    if(state.activeId === id){
+      state.activeId = state.accounts[0].id;
+    }
+    save(); render();
+  });
 }
 
 function addCreditLine(institution, limit, used){
@@ -879,9 +906,10 @@ function saveEditCreditModal(){
   render();
 }
 function deleteCreditLine(id){
-  if(!confirm('이 마통 항목을 삭제할까요?')) return;
-  state.creditLines = state.creditLines.filter(c => c.id !== id);
-  saveCreditLines(); render();
+  showConfirmModal('이 마통 항목을 삭제할까요?', true, () => {
+    state.creditLines = state.creditLines.filter(c => c.id !== id);
+    saveCreditLines(); render();
+  });
 }
 function setupStockNameAutocomplete(nameInput, acHolder, groupInput, regionSelect){
   if(!nameInput || !acHolder) return;
@@ -1060,9 +1088,10 @@ function deleteHolding(accId, holdId){
   const acc = getAccount(accId);
   const h = acc.holdings.find(x => x.id === holdId);
   const name = h ? (isCashHolding(h) ? (h.region === 'overseas' ? '현금-해외' : '현금-국내') : h.name) : '이 종목';
-  if(!confirm(`"${name}"을(를) 삭제할까요?`)) return;
-  acc.holdings = acc.holdings.filter(h => h.id !== holdId);
-  save(); render();
+  showConfirmModal(`"${name}"을(를) 삭제할까요?`, true, () => {
+    acc.holdings = acc.holdings.filter(h => h.id !== holdId);
+    save(); render();
+  });
 }
 let editContext = null;
 function editHolding(accId, holdId){
@@ -1108,40 +1137,48 @@ async function saveSnapshot(){
   const label = normalizeLabel(input);
   if(label.length !== 6){ alert('YYYYMM 형식의 숫자 6자리로 입력해주세요. (예: 202608)'); return; }
   const existing = state.snapshots.find(s => s.label === label);
-  if(existing && !confirm(`"${label}" 데이터가 이미 있습니다. 덮어쓸까요?`)) return;
-  const snap = {
-    id: existing ? existing.id : uid(),
-    label,
-    timestamp: Date.now(),
-    accounts: JSON.parse(JSON.stringify(state.accounts)),
-    creditLines: JSON.parse(JSON.stringify(state.creditLines)),
-    memo: existing ? (existing.memo || '') : ''
+  const doSave = async () => {
+    const snap = {
+      id: existing ? existing.id : uid(),
+      label,
+      timestamp: Date.now(),
+      accounts: JSON.parse(JSON.stringify(state.accounts)),
+      creditLines: JSON.parse(JSON.stringify(state.creditLines)),
+      memo: existing ? (existing.memo || '') : ''
+    };
+    state.snapshots = state.snapshots.filter(s => s.label !== label);
+    state.snapshots.push(snap);
+    state.snapshots.sort((a,b)=> a.label.localeCompare(b.label));
+    await saveSnapshots();
+    alert(`"${label}" 데이터가 저장되었습니다.`);
+    render();
   };
-  state.snapshots = state.snapshots.filter(s => s.label !== label);
-  state.snapshots.push(snap);
-  state.snapshots.sort((a,b)=> a.label.localeCompare(b.label));
-  await saveSnapshots();
-  alert(`"${label}" 데이터가 저장되었습니다.`);
-  render();
+  if(existing){
+    showConfirmModal(`"${label}" 데이터가 이미 있습니다. 덮어쓸까요?`, true, doSave);
+  } else {
+    await doSave();
+  }
 }
 function deleteSnapshot(id){
-  if(!confirm('월별 자산을 삭제할까요?')) return;
-  state.snapshots = state.snapshots.filter(s => s.id !== id);
-  saveSnapshots(); render();
+  showConfirmModal('월별 자산을 삭제할까요?', true, () => {
+    state.snapshots = state.snapshots.filter(s => s.id !== id);
+    saveSnapshots(); render();
+  });
 }
 function loadSnapshotForEdit(id){
   const snap = state.snapshots.find(s => s.id === id);
   if(!snap) return;
-  if(!confirm(`"${snap.label}" 데이터를 현재 화면으로 불러올까요?\n지금 입력되어 있는 계좌 데이터는 이걸로 덮어써집니다.\n수정 후 "이번달 자산 저장"에서 같은 월(${snap.label})을 입력하면 월별 자산이 갱신됩니다.`)) return;
-  state.accounts = JSON.parse(JSON.stringify(snap.accounts));
-  state.creditLines = JSON.parse(JSON.stringify(snap.creditLines || []));
-  if(state.accounts.length === 0){
-    state.accounts = [{ id: uid(), name: '계좌 1', accountType:'직투', holdings: [] }];
-  }
-  state.activeId = state.accounts[0].id;
-  save();
-  saveCreditLines();
-  render();
+  showConfirmModal(`"${snap.label}" 데이터를 현재 화면으로 불러올까요?\n지금 입력되어 있는 계좌 데이터는 이걸로 덮어써집니다.\n수정 후 "이번달 자산 저장"에서 같은 월(${snap.label})을 입력하면 월별 자산이 갱신됩니다.`, true, () => {
+    state.accounts = JSON.parse(JSON.stringify(snap.accounts));
+    state.creditLines = JSON.parse(JSON.stringify(snap.creditLines || []));
+    if(state.accounts.length === 0){
+      state.accounts = [{ id: uid(), name: '계좌 1', accountType:'직투', holdings: [] }];
+    }
+    state.activeId = state.accounts[0].id;
+    save();
+    saveCreditLines();
+    render();
+  });
 }
 
 function computeWeights(holdings, key){
@@ -2780,6 +2817,15 @@ function render(){
 
 document.getElementById('editCancelBtn').addEventListener('click', closeEditModal);
 document.getElementById('editCreditCancelBtn').addEventListener('click', closeEditCreditModal);
+document.getElementById('confirmModalCancelBtn').addEventListener('click', closeConfirmModal);
+document.getElementById('confirmModalConfirmBtn').addEventListener('click', () => {
+  const cb = confirmModalCallback;
+  closeConfirmModal();
+  if(cb) cb();
+});
+document.getElementById('confirmModal').addEventListener('click', (e) => {
+  if(e.target.id === 'confirmModal') closeConfirmModal();
+});
 document.getElementById('addAccountCancelBtn').addEventListener('click', closeAddAccountModal);
 document.getElementById('addAccountSaveBtn').addEventListener('click', saveAddAccountModal);
 document.getElementById('addAccountModal').addEventListener('click', (e) => {
@@ -2801,15 +2847,16 @@ setupStockNameAutocomplete(
 );
 
 async function handleResetAllData(){
-  if(!confirm('모든 계좌, 종목, 월별 자산, 마통 데이터를 삭제할까요?? 되돌릴 수 없습니다.')) return;
-  state.accounts = [{ id: uid(), name: '계좌 1', holdings: [] }];
-  state.snapshots = [];
-  state.creditLines = [];
-  state.activeId = '__total__';
-  await save();
-  await saveSnapshots();
-  await saveCreditLines();
-  render();
+  showConfirmModal('모든 계좌, 종목, 월별 자산, 마통 데이터를 삭제할까요? 되돌릴 수 없습니다.', true, async () => {
+    state.accounts = [{ id: uid(), name: '계좌 1', holdings: [] }];
+    state.snapshots = [];
+    state.creditLines = [];
+    state.activeId = '__total__';
+    await save();
+    await saveSnapshots();
+    await saveCreditLines();
+    render();
+  });
 }
 document.getElementById('snapshotBtn').addEventListener('click', saveSnapshot);
 document.getElementById('exportBtn').addEventListener('click', exportData);
