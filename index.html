@@ -229,8 +229,8 @@ const NAVY_STRONG = '#646FDF';
 const NAVY_LIGHT = '#9CAAD4';
 const GROUP_STRONG = '#2770B6';
 const GROUP_LIGHT = '#7EB1E4';
-const REGION_STRONG = '#4F8F6D';
-const REGION_LIGHT = '#CFE8D9';
+const REGION_STRONG = '#44999A';
+const REGION_LIGHT = '#CBECEA';
 const ACCTYPE_STRONG = '#7C6499';
 const ACCTYPE_LIGHT = '#E1D7EC';
 const CASH_COLOR = '#9A9BA1';
@@ -1518,7 +1518,7 @@ function regionLegendHTML(holdings){
 
 function sectorChartBlock(holdings){
   const { legend, ordered } = sectorLegendHTML(holdings);
-  return `<div class="chart-box"><div style="cursor:pointer;position:relative;" data-donut-cycle-sector>${donutSVG(ordered, 160, 'group')}<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;"><span class="stock-donut-center-label" style="color:var(--text-dim);font-weight:700;text-align:center;">섹터</span></div></div><div class="legend">${legend}</div></div>`;
+  return `<div class="chart-box"><div style="cursor:pointer;position:relative;" data-donut-cycle-sector>${donutSVG(ordered, 160, 'group')}<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;"><span id="sector-center-label" class="stock-donut-center-label" style="color:var(--text-dim);font-weight:700;text-align:center;">섹터</span></div></div><div class="legend">${legend}</div></div>`;
 }
 
 function highlightChartSlice(triggerEl, idx, ringName){
@@ -1575,6 +1575,8 @@ function bindSectorAccordionHandlers(){
         slot.innerHTML = '';
         sectorAccordionOpenIdx = null;
         clearChartHighlight(el, 'decorative-sector');
+        const centerLabelEl = document.getElementById('sector-center-label');
+        if(centerLabelEl) centerLabelEl.textContent = '섹터';
         return;
       }
       const holdings = sectorAccordionHoldings.filter(h => h.group === label);
@@ -1591,6 +1593,8 @@ function bindSectorAccordionHandlers(){
       </div>`;
       sectorAccordionOpenIdx = idx;
       highlightChartSlice(el, idx, 'decorative-sector');
+      const centerLabelEl2 = document.getElementById('sector-center-label');
+      if(centerLabelEl2) centerLabelEl2.textContent = label;
     });
   });
 }
@@ -1606,7 +1610,7 @@ function mergedRegionLabelFor(h){
 
 function regionChartBlock(holdings){
   const { legend, ordered } = regionLegendHTML(holdings);
-  return `<div class="chart-box"><div style="cursor:pointer;position:relative;" data-donut-cycle-region>${donutSVG(ordered, 160, 'region')}<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;"><span class="stock-donut-center-label" style="color:var(--text-dim);font-weight:700;text-align:center;">지역</span></div></div><div class="legend">${legend}</div></div>`;
+  return `<div class="chart-box"><div style="cursor:pointer;position:relative;" data-donut-cycle-region>${donutSVG(ordered, 160, 'region')}<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;"><span id="region-center-label" class="stock-donut-center-label" style="color:var(--text-dim);font-weight:700;text-align:center;">지역</span></div></div><div class="legend">${legend}</div></div>`;
 }
 
 function cycleRegionSelection(){
@@ -1641,6 +1645,8 @@ function bindRegionAccordionHandlers(){
         slot.innerHTML = '';
         regionAccordionOpenIdx = null;
         clearChartHighlight(el, 'decorative-region');
+        const centerLabelEl = document.getElementById('region-center-label');
+        if(centerLabelEl) centerLabelEl.textContent = '지역';
         return;
       }
       let breakdown;
@@ -1657,6 +1663,8 @@ function bindRegionAccordionHandlers(){
       </div>`;
       regionAccordionOpenIdx = idx;
       highlightChartSlice(el, idx, 'decorative-region');
+      const centerLabelEl2 = document.getElementById('region-center-label');
+      if(centerLabelEl2) centerLabelEl2.textContent = label;
     });
   });
 }
@@ -2794,6 +2802,8 @@ document.addEventListener('click', (e) => {
     const sectorTriggerEl = document.querySelector(`[data-sector-idx="${sectorAccordionOpenIdx}"]`);
     if(sectorTriggerEl) clearChartHighlight(sectorTriggerEl, 'decorative-sector');
     sectorAccordionOpenIdx = null;
+    const sectorCenterEl = document.getElementById('sector-center-label');
+    if(sectorCenterEl) sectorCenterEl.textContent = '섹터';
   }
   if(regionAccordionOpenIdx !== null){
     const s = document.getElementById('region-slot-' + regionAccordionOpenIdx);
@@ -2801,6 +2811,8 @@ document.addEventListener('click', (e) => {
     const regionTriggerEl = document.querySelector(`[data-region-idx="${regionAccordionOpenIdx}"]`);
     if(regionTriggerEl) clearChartHighlight(regionTriggerEl, 'decorative-region');
     regionAccordionOpenIdx = null;
+    const regionCenterEl = document.getElementById('region-center-label');
+    if(regionCenterEl) regionCenterEl.textContent = '지역';
   }
   if(openMemoSnapId){
     const s = document.getElementById('snap-memo-slot-' + openMemoSnapId);
