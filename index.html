@@ -231,6 +231,15 @@
   </div>
 </div>
 
+<div id="noticeModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:2000;align-items:center;justify-content:center;padding:20px;">
+  <div style="background:#EDEDED;border-radius:10px;padding:24px;width:300px;max-width:100%;">
+    <p id="noticeModalMessage" style="margin:0 0 20px;font-size:14px;color:#333333;white-space:pre-wrap;line-height:1.5;"></p>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button id="noticeModalOkBtn" style="border:none;background:#4FC3F7;color:#111;padding:7px 14px;border-radius:6px;cursor:pointer;font-size:14px;font-family:inherit;font-weight:700;">확인</button>
+    </div>
+  </div>
+</div>
+
 <div id="saveSnapshotModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:2000;align-items:center;justify-content:center;padding:20px;">
   <div style="background:#EDEDED;border-radius:10px;padding:24px;width:320px;max-width:100%;">
     <h3 style="margin:0 0 16px;font-size:16px;font-weight:700;color:#333333;">월별 자산 저장</h3>
@@ -841,6 +850,13 @@ function getAccount(id){ return state.accounts.find(a => a.id === id); }
 
 let confirmModalCallback = null;
 const PINK_HIGHLIGHT = '#C2477C';
+function showNoticeModal(message){
+  document.getElementById('noticeModalMessage').textContent = message;
+  document.getElementById('noticeModal').style.display = 'flex';
+}
+function closeNoticeModal(){
+  document.getElementById('noticeModal').style.display = 'none';
+}
 function pinkSpan(text){
   return `<span style="color:${PINK_HIGHLIGHT};font-weight:700;">${escapeHTML(text)}</span>`;
 }
@@ -1202,7 +1218,7 @@ async function confirmSaveSnapshot(){
     state.snapshots.sort((a,b)=> a.label.localeCompare(b.label));
     await saveSnapshots();
     closeSaveSnapshotModal();
-    alert(`${shortMonthLabel(label)} 데이터가 저장되었습니다.`);
+    showNoticeModal(`${shortMonthLabel(label)} 데이터가 저장되었습니다.`);
     render();
   };
   closeSaveSnapshotModal();
@@ -2884,6 +2900,10 @@ document.getElementById('editAccountNameCancelBtn').addEventListener('click', cl
 document.getElementById('editAccountNameSaveBtn').addEventListener('click', saveEditAccountNameModal);
 document.getElementById('editAccountNameModal').addEventListener('click', (e) => {
   if(e.target.id === 'editAccountNameModal') closeEditAccountNameModal();
+});
+document.getElementById('noticeModalOkBtn').addEventListener('click', closeNoticeModal);
+document.getElementById('noticeModal').addEventListener('click', (e) => {
+  if(e.target.id === 'noticeModal') closeNoticeModal();
 });
 document.getElementById('saveSnapshotCancelBtn').addEventListener('click', closeSaveSnapshotModal);
 document.getElementById('saveSnapshotConfirmBtn').addEventListener('click', confirmSaveSnapshot);
