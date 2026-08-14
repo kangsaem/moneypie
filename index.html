@@ -2793,6 +2793,12 @@ document.getElementById('importFile').addEventListener('change', (e) => {
 });
 
 document.addEventListener('click', (e) => {
+  // 현금비중 아코디언은 그 배지 자체를 다시 클릭한 게 아니면(다른 아코디언을 여는 클릭 포함) 무조건 닫는다
+  if(cashAmountAccordionOpen && !e.target.closest('[data-cashbadge]') && !e.target.closest('#cash-amount-slot')){
+    const cs = document.getElementById('cash-amount-slot');
+    if(cs) cs.innerHTML = '';
+    cashAmountAccordionOpen = false;
+  }
   const isTrigger = e.target.closest('[data-sector-idx],[data-region-idx],[data-memosnap],[data-editmemo],[data-savememo],[data-snap-idx],[data-cashbadge],[data-donut-cycle-sector],[data-donut-cycle-region],[data-donut-cycle],#total-memo-edit,#total-memo-save');
   const isInsideAccordion = e.target.closest('.floating-acc');
   if(isTrigger || isInsideAccordion) return;
@@ -2832,6 +2838,13 @@ document.addEventListener('click', (e) => {
 });
 
 document.getElementById('mktRefreshBtn').addEventListener('click', () => loadMarketData(true));
+window.addEventListener('scroll', () => {
+  if(cashAmountAccordionOpen){
+    const s = document.getElementById('cash-amount-slot');
+    if(s) s.innerHTML = '';
+    cashAmountAccordionOpen = false;
+  }
+}, true);
 document.querySelectorAll('.inline-export-link').forEach(el => {
   el.addEventListener('click', exportData);
 });
