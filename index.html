@@ -172,10 +172,10 @@
   .trend-wrap{margin-top:8px;}
   .total-badge{color:var(--text-dim);font-size:14px;font-weight:500;}
   .total-badge .num{color:#F0DA8C;font-size:16px;font-weight:700;margin-left:6px;}  @keyframes dragHintBounceIn{
-    0%{ transform:translate(-50%,-50%) scale(0.3); opacity:0; }
-    55%{ transform:translate(-50%,-50%) scale(1.12); opacity:1; }
-    75%{ transform:translate(-50%,-50%) scale(0.94); }
-    100%{ transform:translate(-50%,-50%) scale(1); opacity:1; }
+    0%{ transform:translate(-50%,var(--ty,-50%)) scale(0.3); opacity:0; }
+    55%{ transform:translate(-50%,var(--ty,-50%)) scale(1.12); opacity:1; }
+    75%{ transform:translate(-50%,var(--ty,-50%)) scale(0.94); }
+    100%{ transform:translate(-50%,var(--ty,-50%)) scale(1); opacity:1; }
   }
   .drag-hint-bubble{
     animation:dragHintBounceIn 0.5s cubic-bezier(.34,1.56,.64,1) both;
@@ -3629,10 +3629,13 @@ let dragHintShownThisVisit = false;
 function showDragHintOnce(el){
   if(dragHintShownThisVisit) return;
   dragHintShownThisVisit = true;
+  const rect = el.getBoundingClientRect();
+  const centerX = rect.left + rect.width/2;
+  const centerY = rect.top + rect.height/2;
   const bubble = document.createElement('div');
   bubble.className = 'drag-hint-bubble';
   bubble.textContent = '터치나 마우스로 뜬창을 옮길 수 있어요';
-  bubble.style.cssText = `position:fixed;top:50%;left:50%;background:#E87BA4;color:#FFFFFF;padding:14px 22px;border-radius:12px;font-size:14px;font-weight:700;white-space:nowrap;box-shadow:0 8px 24px rgba(0,0,0,0.4);z-index:20000;pointer-events:none;`;
+  bubble.style.cssText = `position:fixed;top:${centerY}px;left:${centerX}px;--ty:-50%;background:#E87BA4;color:#FFFFFF;padding:14px 22px;border-radius:12px;font-size:14px;font-weight:700;white-space:nowrap;box-shadow:0 8px 24px rgba(0,0,0,0.4);z-index:20000;pointer-events:none;`;
   document.body.appendChild(bubble);
   setTimeout(() => {
     bubble.classList.add('fade-out');
