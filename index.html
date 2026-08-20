@@ -3642,7 +3642,7 @@ function showDragHintOnce(el){
     setTimeout(() => {
       if(bubble.parentNode) bubble.parentNode.removeChild(bubble);
     }, 800);
-  }, 2000);
+  }, 3000);
 }
 
 function makeAccordionDraggable(el){
@@ -3781,45 +3781,52 @@ loadMarketData(true);
   } catch(e){ /* 네트워크 오류 등 - 조용히 스킵 */ }
 })();
 
+function checkNoticeHtml(){
+  return new Promise((resolve) => {
+    (async () => {
+      const NOTICE_HTML_KEY = 'moneypie_notice_html_dismissed_hash';
+      try {
+        const res = await fetch('notice.html?_=' + Date.now(), { cache: 'no-store' });
+        if(!res.ok) return resolve();
+        const buffer = await res.arrayBuffer();
+        const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+        const hashHex = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2,'0')).join('');
+
+        let dismissedHash = null;
+        try { dismissedHash = localStorage.getItem(NOTICE_HTML_KEY); } catch(e){}
+        if(dismissedHash === hashHex) return resolve();
+
+        const htmlText = new TextDecoder('utf-8').decode(buffer);
+        const parsed = new DOMParser().parseFromString(htmlText, 'text/html');
+        const modalEl = parsed.getElementById('noticeModal');
+        if(!modalEl) return resolve();
+
+        const slot = document.getElementById('noticeHtmlSlot');
+        if(!slot) return resolve();
+        slot.appendChild(modalEl);
+        modalEl.style.display = 'flex';
+
+        const dismiss = () => {
+          modalEl.style.display = 'none';
+          const chk = document.getElementById('noticeDontShowAgain');
+          if(chk && chk.checked){
+            try { localStorage.setItem(NOTICE_HTML_KEY, hashHex); } catch(e){}
+          }
+          resolve();
+        };
+        const okBtn = document.getElementById('noticeOkBtn');
+        if(okBtn) okBtn.addEventListener('click', dismiss);
+        modalEl.addEventListener('click', (e) => {
+          if(e.target === modalEl) dismiss();
+        });
+      } catch(e){ resolve(); }
+    })();
+  });
+}
+
 (async function(){
-  const NOTICE_HTML_KEY = 'moneypie_notice_html_dismissed_hash';
-  try {
-    const res = await fetch('notice.html?_=' + Date.now(), { cache: 'no-store' });
-    if(!res.ok) return; // notice.html 없으면 조용히 스킵
-    const buffer = await res.arrayBuffer();
-    const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
-    const hashHex = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2,'0')).join('');
+  await checkNoticeHtml();
 
-    let dismissedHash = null;
-    try { dismissedHash = localStorage.getItem(NOTICE_HTML_KEY); } catch(e){}
-    if(dismissedHash === hashHex) return; // 이미 본(껐던) 공지와 동일 -> 스킵
-
-    const htmlText = new TextDecoder('utf-8').decode(buffer);
-    const parsed = new DOMParser().parseFromString(htmlText, 'text/html');
-    const modalEl = parsed.getElementById('noticeModal');
-    if(!modalEl) return; // 예상한 구조가 아니면 조용히 스킵
-
-    const slot = document.getElementById('noticeHtmlSlot');
-    if(!slot) return;
-    slot.appendChild(modalEl);
-    modalEl.style.display = 'flex';
-
-    const dismiss = () => {
-      modalEl.style.display = 'none';
-      const chk = document.getElementById('noticeDontShowAgain');
-      if(chk && chk.checked){
-        try { localStorage.setItem(NOTICE_HTML_KEY, hashHex); } catch(e){}
-      }
-    };
-    const okBtn = document.getElementById('noticeOkBtn');
-    if(okBtn) okBtn.addEventListener('click', dismiss);
-    modalEl.addEventListener('click', (e) => {
-      if(e.target === modalEl) dismiss();
-    });
-  } catch(e){ /* 네트워크 오류 등 - 조용히 스킵 */ }
-})();
-
-(function(){
   // ===== 사용 매뉴얼 (이미지 가이드) =====
   const MANUAL_KEY = 'moneypie_manual_dismissed';
   const manualModal = document.getElementById('manualModal');
