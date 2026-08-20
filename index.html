@@ -3629,9 +3629,16 @@ let dragHintShownThisVisit = false;
 function showDragHintOnce(el){
   if(dragHintShownThisVisit) return;
   dragHintShownThisVisit = true;
-  const rect = el.getBoundingClientRect();
-  const centerX = rect.left + rect.width/2;
-  const centerY = rect.top + rect.height/2;
+  const isNarrow = window.innerWidth < 640;
+  let centerX, centerY;
+  if(isNarrow){
+    centerX = window.innerWidth / 2;
+    centerY = window.innerHeight / 2;
+  } else {
+    const rect = el.getBoundingClientRect();
+    centerX = rect.left + rect.width/2;
+    centerY = rect.top + rect.height/2;
+  }
   const bubble = document.createElement('div');
   bubble.className = 'drag-hint-bubble';
   bubble.textContent = '터치나 마우스로 뜬창을 옮길 수 있어요';
