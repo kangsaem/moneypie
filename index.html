@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7103292552862249"
+     crossorigin="anonymous"></script>
 <title>머니파이 MONEY PIE</title>
 <meta name="description" content="연금저축·IRP·ISA·직투 계좌를 한곳에 모아 섹터·지역·계좌유형별 자산배분을 한눈에 보여주는 무료 도구. 로그인·서버 전송 없이 브라우저에만 저장됩니다.">
 <meta property="og:type" content="website">
@@ -434,7 +436,7 @@ const MARKET_RANGE_CYCLE = ['1d','1mo','3mo','6mo','1y'];
 // 원자재/미국채/환율은 자체 거래시간이 24시간에 가까워 "정규장" 개념이 애매하므로,
 // 한국 증시 정규장(09:00~15:30 KST) 시간을 기준선으로 빌려와서 그린다.
 const KOREA_SESSION_KEYS = ['wti','gold','us10y','usdkrw'];
-const KR_OVERRIDE_KEYS = ['wti','gold','usdkrw'];
+const KR_OVERRIDE_KEYS = [];
 // 미국 지수(S&P500/나스닥)도 야후 무료 데이터가 약 15분 지연되는 것으로 알려져 있어,
 // 그래프 우측 끝(장마감) 기준에 지연시간만큼 버퍼를 더해준다.
 const NAVER_INDEX_MAP = { kospi:'KOSPI', kosdaq:'KOSDAQ' };
@@ -759,6 +761,7 @@ function rankColor(label, index, count, type){
   if(label === '현금') return CASH_COLOR;
   if(label === '원화') return CASH_COLOR;
   if(label === '외화') return CASH_OVERSEAS;
+  if(label === '기타') return '#9A9BA1';
   if(type === 'stock'){
     const cycle = Math.floor(index/2);
     const totalCycles = Math.ceil(count/2);
@@ -1240,15 +1243,16 @@ function setupStockNameAutocomplete(nameInput, acHolder, groupInput, regionSelec
 }
 
 function cashRatioColor(pct){
-  if(pct < 10) return '#B85450';   // 어두운 빨강 (마통사용과 동일)
-  if(pct < 20) return '#C2477C';   // 진한 핑크
-  if(pct < 30) return '#E8A0BC';   // 연한 핑크
-  if(pct < 45) return '#F5D2DE';   // 많이 연한 핑크
-  if(pct <= 55) return '#FFFFFF';  // 흰색
-  if(pct <= 70) return '#D2ECFA';  // 많이 연한 하늘색
-  if(pct <= 80) return '#8FCBEA';  // 연한 하늘색
-  if(pct <= 90) return '#2E86C1';  // 진한 하늘색
-  return '#7C6499';                // 진한 보라색 (계좌유형별과 동일)
+  if(pct < 5) return '#B85450';    // 어두운 빨강 (마통사용과 동일)
+  if(pct < 10) return '#C2477C';   // 진한 핑크
+  if(pct < 15) return '#E8A0BC';   // 연한 핑크
+  if(pct < 20) return '#F5D2DE';   // 많이 연한 핑크
+  if(pct < 30) return '#FFFFFF';   // 흰색
+  if(pct < 40) return '#D2ECFA';   // 많이 연한 하늘색
+  if(pct < 50) return '#8FCBEA';   // 연한 하늘색
+  if(pct < 60) return '#2E86C1';   // 진한 하늘색
+  if(pct < 80) return '#1A5276';   // 진한 파란색
+  return '#7C6499';                // 보라 (계좌유형별과 동일)
 }
 
 let cashAmountAccordionOpen = false;
@@ -1438,7 +1442,7 @@ function loadSnapshotForEdit(id){
     if(state.accounts.length === 0){
       state.accounts = [{ id: uid(), name: '계좌 1', accountType:'직투', holdings: [] }];
     }
-    state.activeId = state.accounts[0].id;
+    state.activeId = '__total__';
     save();
     saveCreditLines();
     render();
@@ -1905,16 +1909,27 @@ function accordionRowHTML(label, pct){
   return `<div style="display:flex;justify-content:space-between;gap:8px;padding:4px 0;font-size:12px;color:#333333;border-bottom:1px solid #C9C9C9;"><span>${name}</span><span class="num">${pct.toFixed(1)}%</span></div>`;
 }
 
+let sectorOtherItems = [];
 function sectorLegendHTML(holdings){
   sectorAccordionHoldings = holdings;
   sectorAccordionOpenIdx = null;
   const byGroup = computeWeights(holdings, 'group');
-  const ordered = reorderCashFirst(byGroup);
+  const smallItems = byGroup.filter(d => d.pct < 1 && !isCashLikeLabel(d.label));
+  let grouped = byGroup;
+  sectorOtherItems = [];
+  if(smallItems.length >= 2){
+    const bigItems = byGroup.filter(d => !smallItems.includes(d));
+    const otherAmount = _.sumBy(smallItems, 'amount');
+    const otherPct = _.sumBy(smallItems, 'pct');
+    sectorOtherItems = smallItems;
+    grouped = [...bigItems, { label: '기타', amount: otherAmount, pct: otherPct, group: '기타' }];
+  }
+  const ordered = reorderCashFirst(grouped);
   sectorAccordionOrdered = ordered;
   const legend = ordered.map((d,i) => {
     const rank = d.rank !== undefined ? d.rank : i;
     const rankCount = d.rankCount !== undefined ? d.rankCount : ordered.length;
-    const color = rankColor(d.label, rank, rankCount, 'group');
+    const color = d.label === '기타' ? '#9A9BA1' : rankColor(d.label, rank, rankCount, 'group');
     const isCashLabel = isCashLikeLabel(d.label);
     const cashStyle = isCashLabel ? 'color:#F0DA8C;font-weight:700;' : '';
     return `<div style="position:relative;">
@@ -2052,6 +2067,64 @@ function cycleSectorSelection(){
   if(el) el.click();
 }
 
+function renderSectorBreakdown(label, slot, triggerEl, idx){
+  const holdings = sectorAccordionHoldings.filter(h => h.group === label);
+  const regionLabelFn = (label === '현금') ? regionLabelFor : mergedRegionLabelFor;
+  const regionBreakdown = computeWeights(holdings, regionLabelFn);
+  const regionBarHtml = (sectorAccordionShowRegionBar && regionBreakdown.length > 0)
+    ? `<div style="margin-bottom:8px;"><div style="border-radius:4px;overflow:hidden;position:relative;">${greenBarWithLabelHTML(regionBreakdown, 220, 14)}</div></div>`
+    : '';
+  const breakdown = reorderCashFirst(computeWeights(holdings, 'name'));
+  const rows = breakdown.map(d => accordionRowHTML(d.label, d.pct)).join('');
+  const sectorTotalAmount = _.sumBy(holdings, 'amount');
+  slot.innerHTML = `<div class="floating-acc" style="background:#EDEDED;color:#333333;border-radius:6px;text-align:left;box-sizing:border-box;width:240px;position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:4px;z-index:${++accordionZIndexCounter};box-shadow:0 4px 12px rgba(0,0,0,0.4);cursor:grab;overflow:hidden;">
+    <div class="acc-header" style="background:#C9C9C9;padding:0 0 0 12px;display:flex;align-items:stretch;height:26px;">
+      <span style="font-size:13px;font-weight:700;color:#333333;display:flex;align-items:center;">${escapeHTML(label)}</span>
+      <span class="num" style="font-size:11px;color:#555555;display:flex;align-items:center;justify-content:center;flex:1;">${sectorTotalAmount.toLocaleString()}</span>
+      <span class="drag-grip-icon" style="margin-left:auto;padding:0 8px;color:#999999;font-size:13px;letter-spacing:-2px;user-select:none;pointer-events:none;display:flex;align-items:center;">⠿</span><button data-acc-close style="width:26px;height:100%;background:#E87BA4;border:none;border-radius:0;color:#EDEDED;font-size:15px;font-weight:700;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">&times;</button>
+    </div>
+    <div class="acc-body" style="padding:8px 12px;">
+      ${regionBarHtml}
+      ${rows || '<div class="empty">데이터 없음</div>'}
+    </div>
+  </div>`;
+  makeAccordionDraggable(slot.querySelector('.floating-acc'));
+  const closeBtn = slot.querySelector('[data-acc-close]');
+  if(closeBtn) closeBtn.addEventListener('click', () => triggerEl.click());
+  sectorAccordionOpenIdx = idx;
+  highlightChartSlice(triggerEl, idx, 'decorative-sector');
+  const centerLabelEl2 = document.getElementById('sector-center-label');
+  if(centerLabelEl2) centerLabelEl2.textContent = label;
+}
+
+function renderSectorOtherList(slot, triggerEl, idx){
+  const rows = sectorOtherItems.map(d =>
+    `<div class="legend-item" data-sector-other-label="${escapeHTML(d.label)}" style="cursor:pointer;"><span class="legend-name">${escapeHTML(d.label)}</span><span class="legend-pct num">${d.pct.toFixed(1)}<span class="pct-sign">%</span></span></div>`
+  ).join('');
+  slot.innerHTML = `<div class="floating-acc" style="background:#EDEDED;color:#333333;border-radius:6px;text-align:left;box-sizing:border-box;width:240px;max-height:300px;display:flex;flex-direction:column;position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:4px;z-index:${++accordionZIndexCounter};box-shadow:0 4px 12px rgba(0,0,0,0.4);cursor:grab;overflow:hidden;">
+    <div class="acc-header" style="background:#C9C9C9;padding:0 0 0 12px;display:flex;align-items:stretch;height:26px;flex-shrink:0;">
+      <span style="font-size:13px;font-weight:700;color:#333333;display:flex;align-items:center;">기타</span>
+      <span class="drag-grip-icon" style="margin-left:auto;padding:0 8px;color:#999999;font-size:13px;letter-spacing:-2px;user-select:none;pointer-events:none;display:flex;align-items:center;">⠿</span><button data-acc-close style="width:26px;height:100%;background:#E87BA4;border:none;border-radius:0;color:#EDEDED;font-size:15px;font-weight:700;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">&times;</button>
+    </div>
+    <div class="acc-body" style="padding:4px 12px;overflow-y:auto;">
+      ${rows}
+    </div>
+  </div>`;
+  makeAccordionDraggable(slot.querySelector('.floating-acc'));
+  const closeBtn = slot.querySelector('[data-acc-close]');
+  if(closeBtn) closeBtn.addEventListener('click', () => triggerEl.click());
+  slot.querySelectorAll('[data-sector-other-label]').forEach(row => {
+    row.addEventListener('click', (e) => {
+      e.stopPropagation();
+      renderSectorBreakdown(row.dataset.sectorOtherLabel, slot, triggerEl, idx);
+    });
+  });
+  sectorAccordionOpenIdx = idx;
+  highlightChartSlice(triggerEl, idx, 'decorative-sector');
+  const centerLabelEl2 = document.getElementById('sector-center-label');
+  if(centerLabelEl2) centerLabelEl2.textContent = '기타';
+}
+
 function bindSectorAccordionHandlers(){
   document.querySelectorAll('[data-donut-cycle-sector]').forEach(el => {
     el.addEventListener('click', cycleSectorSelection);
@@ -2075,31 +2148,11 @@ function bindSectorAccordionHandlers(){
         if(centerLabelEl) centerLabelEl.textContent = '섹터';
         return;
       }
-      const holdings = sectorAccordionHoldings.filter(h => h.group === label);
-      const regionLabelFn = (label === '현금') ? regionLabelFor : mergedRegionLabelFor;
-      const regionBreakdown = computeWeights(holdings, regionLabelFn);
-      const regionBarHtml = (sectorAccordionShowRegionBar && regionBreakdown.length > 0)
-        ? `<div style="margin-bottom:8px;"><div style="border-radius:4px;overflow:hidden;position:relative;">${greenBarWithLabelHTML(regionBreakdown, 220, 14)}</div></div>`
-        : '';
-      const breakdown = reorderCashFirst(computeWeights(holdings, 'name'));
-      const rows = breakdown.map(d => accordionRowHTML(d.label, d.pct)).join('');
-      slot.innerHTML = `<div class="floating-acc" style="background:#EDEDED;color:#333333;border-radius:6px;text-align:left;box-sizing:border-box;width:240px;position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:4px;z-index:${++accordionZIndexCounter};box-shadow:0 4px 12px rgba(0,0,0,0.4);cursor:grab;overflow:hidden;">
-        <div class="acc-header" style="background:#C9C9C9;padding:0 0 0 12px;display:flex;align-items:stretch;height:26px;">
-          <span style="font-size:13px;font-weight:700;color:#333333;display:flex;align-items:center;">${escapeHTML(label)}</span>
-          <span class="drag-grip-icon" style="margin-left:auto;padding:0 8px;color:#999999;font-size:13px;letter-spacing:-2px;user-select:none;pointer-events:none;display:flex;align-items:center;">⠿</span><button data-acc-close style="width:26px;height:100%;background:#E87BA4;border:none;border-radius:0;color:#EDEDED;font-size:15px;font-weight:700;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">&times;</button>
-        </div>
-        <div class="acc-body" style="padding:8px 12px;">
-          ${regionBarHtml}
-          ${rows || '<div class="empty">데이터 없음</div>'}
-        </div>
-      </div>`;
-      makeAccordionDraggable(slot.querySelector('.floating-acc'));
-      const sectorCloseBtn = slot.querySelector('[data-acc-close]');
-      if(sectorCloseBtn) sectorCloseBtn.addEventListener('click', () => el.click());
-      sectorAccordionOpenIdx = idx;
-      highlightChartSlice(el, idx, 'decorative-sector');
-      const centerLabelEl2 = document.getElementById('sector-center-label');
-      if(centerLabelEl2) centerLabelEl2.textContent = label;
+      if(label === '기타'){
+        renderSectorOtherList(slot, el, idx);
+      } else {
+        renderSectorBreakdown(label, slot, el, idx);
+      }
     });
   });
 }
@@ -2263,9 +2316,11 @@ function bindRegionAccordionHandlers(){
       const relabeledHoldings = holdings.map(h => isCashHolding(h) ? { ...h, group: cashLabel } : h);
       const breakdown = reorderCashFirst(computeWeights(relabeledHoldings, 'group'));
       const rows = breakdown.map(d => accordionRowHTML(d.label, d.pct)).join('');
+      const regionTotalAmount = _.sumBy(holdings, 'amount');
       slot.innerHTML = `<div class="floating-acc" style="background:#EDEDED;color:#333333;border-radius:6px;text-align:left;box-sizing:border-box;width:240px;position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:4px;z-index:${++accordionZIndexCounter};box-shadow:0 4px 12px rgba(0,0,0,0.4);cursor:grab;overflow:hidden;">
         <div class="acc-header" style="background:#C9C9C9;padding:0 0 0 12px;display:flex;align-items:stretch;height:26px;">
           <span style="font-size:13px;font-weight:700;color:#333333;display:flex;align-items:center;">${escapeHTML(label)}</span>
+          <span class="num" style="font-size:11px;color:#555555;display:flex;align-items:center;justify-content:center;flex:1;">${regionTotalAmount.toLocaleString()}</span>
           <span class="drag-grip-icon" style="margin-left:auto;padding:0 8px;color:#999999;font-size:13px;letter-spacing:-2px;user-select:none;pointer-events:none;display:flex;align-items:center;">⠿</span><button data-acc-close style="width:26px;height:100%;background:#E87BA4;border:none;border-radius:0;color:#EDEDED;font-size:15px;font-weight:700;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">&times;</button>
         </div>
         <div class="acc-body" style="padding:8px 12px;">
@@ -2604,7 +2659,7 @@ function renderTotalMemoBox(snapId){
   const editing = totalMemoEditState[snapId] !== undefined ? totalMemoEditState[snapId] : !hasMemo;
   let inner;
   if(editing){
-    inner = `<textarea id="total-memo-textarea" placeholder="메모를 입력하세요" style="width:100%;box-sizing:border-box;min-height:60px;background:#FFFFFF;color:#333333;border:1px solid #C9C9C9;border-radius:4px;padding:6px;font-size:12px;font-family:inherit;resize:vertical;">${escapeHTML(memoText)}</textarea>
+    inner = `<textarea id="total-memo-textarea" placeholder="메모를 입력하세요" rows="8" style="width:100%;box-sizing:border-box;background:#FFFFFF;color:#333333;border:1px solid #C9C9C9;border-radius:4px;padding:6px;font-size:12px;font-family:inherit;resize:vertical;">${escapeHTML(memoText)}</textarea>
     <div style="text-align:right;margin-top:6px;">
       <button class="btn btn-primary" id="total-memo-save" style="padding:4px 10px;font-size:12px;">메모저장</button>
     </div>`;
@@ -2800,7 +2855,7 @@ function renderTrendAccordionContent(){
     <div style="background:#C9C9C9;display:flex;align-items:stretch;height:26px;flex-shrink:0;">
       <button data-trendnav="1" ${canPrev?'':'disabled'} style="width:26px;height:100%;background:#4FC3F7;opacity:${canPrev?1:0.2};border:none;border-radius:0;color:#EDEDED;font-size:15px;font-weight:700;line-height:1;cursor:${canPrev?'pointer':'default'};display:flex;align-items:center;justify-content:center;flex-shrink:0;">‹</button>
       <span style="flex:1;text-align:center;font-size:13px;font-weight:700;color:#333333;display:flex;align-items:center;justify-content:center;">${escapeHTML(entry.monthLabel)}</span>
-      <button data-trendnav="-1" ${canNext?'':'disabled'} style="width:26px;height:100%;background:#1E88C7;opacity:${canNext?1:0.2};border:none;border-radius:0;color:#EDEDED;font-size:15px;font-weight:700;line-height:1;cursor:${canNext?'pointer':'default'};display:flex;align-items:center;justify-content:center;flex-shrink:0;">›</button>
+      <button data-trendnav="-1" ${canNext?'':'disabled'} style="width:26px;height:100%;background:#4FC3F7;opacity:${canNext?1:0.2};border:none;border-radius:0;color:#EDEDED;font-size:15px;font-weight:700;line-height:1;cursor:${canNext?'pointer':'default'};display:flex;align-items:center;justify-content:center;flex-shrink:0;">›</button>
     </div>
     <div style="padding:12px 16px;overflow-y:auto;">
       ${rows || '<div class="empty">데이터 없음</div>'}
@@ -3188,7 +3243,7 @@ function renderMemoBox(snapId, zIndexOverride){
   const editing = memoEditState[snapId] !== undefined ? memoEditState[snapId] : !hasMemo;
   let inner;
   if(editing){
-    inner = `<textarea id="memo-textarea-${snapId}" placeholder="메모를 입력하세요" style="width:100%;box-sizing:border-box;min-height:60px;background:#FFFFFF;color:#333333;border:1px solid #C9C9C9;border-radius:4px;padding:6px;font-size:12px;font-family:inherit;resize:vertical;">${escapeHTML(memoText)}</textarea>
+    inner = `<textarea id="memo-textarea-${snapId}" placeholder="메모를 입력하세요" rows="8" style="width:100%;box-sizing:border-box;background:#FFFFFF;color:#333333;border:1px solid #C9C9C9;border-radius:4px;padding:6px;font-size:12px;font-family:inherit;resize:vertical;">${escapeHTML(memoText)}</textarea>
     <div style="text-align:right;margin-top:6px;">
       <button class="btn btn-primary" data-savememo="${snapId}" style="padding:4px 10px;font-size:12px;">메모저장</button>
     </div>`;
@@ -3611,6 +3666,9 @@ document.getElementById('importFile').addEventListener('change', (e) => {
 let draggingAccordionEl = null, dragStartX = 0, dragStartY = 0, dragOrigLeft = 0, dragOrigTop = 0;
 let accordionZIndexCounter = 1000;
 let accordionJustDragged = false;
+function getViewportScale(){
+  return (window.visualViewport && window.visualViewport.scale) ? window.visualViewport.scale : 1;
+}
 function startAccordionDrag(el, clientX, clientY){
   if(el._dragHintDismiss) el._dragHintDismiss();
   const rect = el.getBoundingClientRect();
@@ -3636,13 +3694,15 @@ function showDragHintOnce(el){
     centerY = window.innerHeight / 2;
   } else {
     const rect = el.getBoundingClientRect();
+    const visibleTop = Math.max(rect.top, 0);
+    const visibleBottom = Math.min(rect.bottom, window.innerHeight);
     centerX = rect.left + rect.width/2;
-    centerY = rect.top + rect.height/2;
+    centerY = (visibleTop + visibleBottom) / 2;
   }
   const bubble = document.createElement('div');
   bubble.className = 'drag-hint-bubble';
-  bubble.textContent = '터치나 마우스로 뜬창을 옮길 수 있어요';
-  bubble.style.cssText = `position:fixed;top:${centerY}px;left:${centerX}px;--ty:-50%;background:#B0466B;color:#FFFFFF;padding:14px 22px;border-radius:12px;font-size:14px;font-weight:700;white-space:nowrap;box-shadow:0 8px 24px rgba(0,0,0,0.4);z-index:20000;pointer-events:none;`;
+  bubble.textContent = '터치나 마우스로 옮길 수 있어요';
+  bubble.style.cssText = `position:fixed;top:${centerY}px;left:${centerX}px;--ty:-50%;background:#E87BA4;color:#FFFFFF;padding:14px 22px;border-radius:12px;font-size:14px;font-weight:700;white-space:nowrap;box-shadow:0 8px 24px rgba(0,0,0,0.4);z-index:20000;pointer-events:none;`;
   document.body.appendChild(bubble);
   setTimeout(() => {
     bubble.classList.add('fade-out');
@@ -3692,8 +3752,9 @@ window.addEventListener('touchmove', (e) => {
   if(!draggingAccordionEl) return;
   e.preventDefault();
   const t = e.touches[0];
-  draggingAccordionEl.style.left = (dragOrigLeft + (t.clientX - dragStartX)) + 'px';
-  draggingAccordionEl.style.top = (dragOrigTop + (t.clientY - dragStartY)) + 'px';
+  const scale = getViewportScale();
+  draggingAccordionEl.style.left = (dragOrigLeft + (t.clientX - dragStartX) / scale) + 'px';
+  draggingAccordionEl.style.top = (dragOrigTop + (t.clientY - dragStartY) / scale) + 'px';
 }, { passive: false });
 window.addEventListener('touchend', () => {
   if(!draggingAccordionEl) return;
