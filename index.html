@@ -530,25 +530,37 @@ let lastPriceRefreshAt = 0;
 try { lastPriceRefreshAt = parseInt(localStorage.getItem(LS_PRICE_REFRESH_KEY), 10) || 0; } catch(e){}
 const PRICE_REFRESH_COOLDOWN_MS = 5 * 60 * 1000; // 5분
 
+let reloadBtnCooldownInterval = null;
 function applyReloadBtnCooldownVisual(btn){
-  const elapsed = Date.now() - lastPriceRefreshAt;
-  if(elapsed < PRICE_REFRESH_COOLDOWN_MS){
-    btn.disabled = true;
-    btn.style.background = '#555555';
-    btn.style.color = '#999999';
-    btn.style.cursor = 'default';
+  if(reloadBtnCooldownInterval){ clearInterval(reloadBtnCooldownInterval); reloadBtnCooldownInterval = null; }
+  const label = document.getElementById('reloadPricesLabel');
+  function tick(){
+    const liveBtn = document.getElementById('reloadPricesBtn');
+    const liveLabel = document.getElementById('reloadPricesLabel');
+    if(!liveBtn){ if(reloadBtnCooldownInterval){ clearInterval(reloadBtnCooldownInterval); reloadBtnCooldownInterval = null; } return; }
+    const elapsed = Date.now() - lastPriceRefreshAt;
     const remain = PRICE_REFRESH_COOLDOWN_MS - elapsed;
-    setTimeout(() => {
-      // 그 사이 다른 탭으로 이동해 버튼이 재생성됐을 수 있으니, 지금 DOM에 있는 버튼만 갱신
-      const liveBtn = document.getElementById('reloadPricesBtn');
-      if(liveBtn) applyReloadBtnCooldownVisual(liveBtn);
-    }, remain);
-  } else {
-    btn.disabled = false;
-    btn.style.background = '#D4FF3D';
-    btn.style.color = '#111';
-    btn.style.cursor = 'pointer';
+    if(remain > 0){
+      liveBtn.disabled = true;
+      liveBtn.style.background = '#555555';
+      liveBtn.style.color = '#999999';
+      liveBtn.style.cursor = 'default';
+      if(liveLabel){
+        const remainMin = Math.ceil(remain / 60000);
+        liveLabel.style.display = '';
+        liveLabel.innerHTML = `20분 지연 시세<br>${remainMin}분간 쿨다운`;
+      }
+    } else {
+      liveBtn.disabled = false;
+      liveBtn.style.background = '#D4FF3D';
+      liveBtn.style.color = '#111';
+      liveBtn.style.cursor = 'pointer';
+      if(liveLabel) liveLabel.style.display = 'none';
+      if(reloadBtnCooldownInterval){ clearInterval(reloadBtnCooldownInterval); reloadBtnCooldownInterval = null; }
+    }
   }
+  tick();
+  reloadBtnCooldownInterval = setInterval(tick, 1000);
 }
 
 function bindReloadPricesBtn(){
@@ -2812,11 +2824,11 @@ function holdingsTable(holdings, accId, editable, showRegion, alignMode, mergeDu
     <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:14px;">
       <div style="flex:0 1 130px;min-width:70px;text-align:left;${nameColor}${sortCursor}" ${sortable?'data-sortcell="name"':''}>${displayName}</div>
       <div style="flex:0 0 160px;text-align:${amountAlign};padding-right:10px;box-sizing:border-box;${cashColor || qtyAmountColor}${sortCursor}" class="num" ${sortable?'data-sortcell="amount"':''}>${h.amount.toLocaleString()}</div>
-      <div style="flex:1;"></div>
-      <div style="flex:0 0 100px;width:100px;color:var(--text-dim);text-align:${groupAlign};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${sortCursor}" ${sortable?'data-sortcell="group"':''}>${escapeHTML(h.group)}</div>
+      <div style="flex:0.4;"></div>
+      <div style="flex:0 0 100px;width:100px;color:var(--text-dim);text-align:${groupAlign};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-right:-14px;${sortCursor}" ${sortable?'data-sortcell="group"':''}>${escapeHTML(h.group)}</div>
       ${showRegion ? `<div style="flex:0 0 44px;color:var(--text-dim);text-align:${regionAlign};${sortCursor}" ${sortable?'data-sortcell="region"':''}>${h.region==='overseas'?'해외':'국내'}</div>` : ''}
       ${isQtyMode ? `<div style="flex:0 0 90px;white-space:nowrap;color:${qtyGreen};text-align:left;">${h.quantity.toLocaleString()}주</div>` : (showRegion ? '<div style="flex:0 0 90px;"></div>' : '')}
-      <div style="flex:1;"></div>
+      <div style="flex:1.6;"></div>
       ${editable ? `<div style="flex-shrink:0;text-align:right;"><button class="del" data-edit="${h.id}">수정</button> <button class="del" data-del="${h.id}">삭제</button></div>` : ''}
     </div>`;
   }).join('');
@@ -3812,7 +3824,10 @@ function renderPanel(){
 
     panel.innerHTML = `
       <div style="position:relative;">
-        <button id="reloadPricesBtn" style="position:absolute;top:0;left:0;width:44px;height:44px;display:flex;align-items:center;justify-content:center;background:#D4FF3D;color:#111;border:none;border-radius:8px;font-size:20px;font-weight:700;cursor:pointer;">↻</button>
+        <div style="position:absolute;top:0;left:0;display:flex;align-items:center;gap:8px;">
+          <button id="reloadPricesBtn" style="width:34px;height:34px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:#D4FF3D;color:#111;border:none;border-radius:7px;font-size:16px;font-weight:700;cursor:pointer;">↻</button>
+          <div id="reloadPricesLabel" style="display:none;font-size:10px;line-height:1.4;color:var(--text-dim);"></div>
+        </div>
       </div>
       <div class="account-header" style="justify-content:center;flex-direction:column;gap:4px;">
         <span class="total-badge">자산<span class="num">${total.toLocaleString()}원</span></span>
@@ -3901,7 +3916,10 @@ function renderPanel(){
 
     panel.innerHTML = `
       <div style="position:relative;">
-        <button id="reloadPricesBtn" style="position:absolute;top:0;left:0;width:44px;height:44px;display:flex;align-items:center;justify-content:center;background:#D4FF3D;color:#111;border:none;border-radius:8px;font-size:20px;font-weight:700;cursor:pointer;">↻</button>
+        <div style="position:absolute;top:0;left:0;display:flex;align-items:center;gap:8px;">
+          <button id="reloadPricesBtn" style="width:34px;height:34px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:#D4FF3D;color:#111;border:none;border-radius:7px;font-size:16px;font-weight:700;cursor:pointer;">↻</button>
+          <div id="reloadPricesLabel" style="display:none;font-size:10px;line-height:1.4;color:var(--text-dim);"></div>
+        </div>
       </div>
       <div class="account-header" style="justify-content:center;flex-direction:column;gap:0;">
         ${thisMonthSnap ? `<div style="position:relative;margin-bottom:14px;"><button class="btn-memo" data-memosnap="${thisMonthSnap.id}">메모</button><div id="snap-memo-slot-${thisMonthSnap.id}"></div></div>` : ''}
@@ -3961,7 +3979,7 @@ function renderPanel(){
 
   panel.innerHTML = `
     <div class="account-header" style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center;">
-      <div><button id="reloadPricesBtn" style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;background:#D4FF3D;color:#111;border:none;border-radius:8px;font-size:20px;font-weight:700;cursor:pointer;">↻</button></div>
+      <div style="display:flex;align-items:center;gap:8px;"><button id="reloadPricesBtn" style="width:34px;height:34px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:#D4FF3D;color:#111;border:none;border-radius:7px;font-size:16px;font-weight:700;cursor:pointer;">↻</button><div id="reloadPricesLabel" style="display:none;font-size:10px;line-height:1.4;color:var(--text-dim);"></div></div>
       <div style="display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;">
         <button class="btn" id="typeBtn" style="padding:4px 10px;font-size:12px;">${escapeHTML(acc.accountType||'직투')}</button>
         <span class="total-badge">자산<span class="num">${accTotal.toLocaleString()}원</span></span>
