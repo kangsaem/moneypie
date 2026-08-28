@@ -1034,7 +1034,7 @@ function exportData(){
 }
 
 function exportXLSX(){
-  const holdingRows = [['계좌명','계좌유형','종목','섹터','지역','평가액']];
+  const holdingRows = [['계좌명','계좌유형','종목','섹터','지역','평가액','주식수','심볼']];
   state.accounts.forEach(a => {
     a.holdings.forEach(h => {
       const name = isCashHolding(h) ? (h.region === 'overseas' ? '외화' : '원화') : h.name;
@@ -1044,7 +1044,9 @@ function exportXLSX(){
         name,
         h.group,
         h.region === 'overseas' ? '해외' : '국내',
-        h.amount
+        h.amount,
+        h.quantity != null ? h.quantity : '',
+        h.symbol || ''
       ]);
     });
   });
@@ -1079,7 +1081,7 @@ function exportXLSX(){
     snapshotRows.push([fullMonthLabel(s.label), total, domestic, overseas, creditUsed, s.memo || '']);
   });
 
-  const snapshotDetailRows = [['월','계좌명','계좌유형','종목','섹터','지역','평가액']];
+  const snapshotDetailRows = [['월','계좌명','계좌유형','종목','섹터','지역','평가액','주식수','심볼']];
   state.snapshots.forEach(s => {
     s.accounts.forEach(a => {
       a.holdings.forEach(h => {
@@ -1091,7 +1093,9 @@ function exportXLSX(){
           name,
           h.group,
           h.region === 'overseas' ? '해외' : '국내',
-          h.amount
+          h.amount,
+          h.quantity != null ? h.quantity : '',
+          h.symbol || ''
         ]);
       });
     });
@@ -1145,27 +1149,32 @@ function importXLSX(file){
       function toNum(v){
         return typeof v === 'number' && !isNaN(v) ? v : (parseFloat(v) || 0);
       }
-      function rowToHolding(name, group, region, amount){
+      function rowToHolding(name, group, region, amount, quantity, symbol){
         const isCash = (name === '원화' || name === '외화');
-        return {
+        const holding = {
           id: uid(),
           name: isCash ? '현금' : String(name || ''),
           group: isCash ? '현금' : String(group || '기타'),
           amount: toNum(amount),
           region: (region === '해외' || name === '외화') ? 'overseas' : 'domestic'
         };
+        if(!isCash && quantity !== '' && quantity != null && symbol){
+          holding.quantity = toNum(quantity);
+          holding.symbol = String(symbol);
+        }
+        return holding;
       }
       function buildAccountsFromRows(rows){
         const byAccount = {};
         const order = [];
         rows.forEach(r => {
-          const [accName, accType, holdName, group, region, amount] = r;
+          const [accName, accType, holdName, group, region, amount, quantity, symbol] = r;
           const key = accName + '||' + accType;
           if(!byAccount[key]){
             byAccount[key] = { id: uid(), name: String(accName || '계좌'), accountType: ACCOUNT_TYPES.includes(accType) ? accType : '직투', holdings: [] };
             order.push(key);
           }
-          byAccount[key].holdings.push(rowToHolding(holdName, group, region, amount));
+          byAccount[key].holdings.push(rowToHolding(holdName, group, region, amount, quantity, symbol));
         });
         return order.map(k => byAccount[k]);
       }
@@ -1185,9 +1194,9 @@ function importXLSX(file){
       }
 
       sheetRows('월별상세종목').forEach(r => {
-        const [monthLabel, accName, accType, holdName, group, region, amount] = r;
+        const [monthLabel, accName, accType, holdName, group, region, amount, quantity, symbol] = r;
         const rawLabel = String(monthLabel || '').replace(/-/g, '');
-        ensureMonth(rawLabel).accountRows.push([accName, accType, holdName, group, region, amount]);
+        ensureMonth(rawLabel).accountRows.push([accName, accType, holdName, group, region, amount, quantity, symbol]);
       });
       sheetRows('월별마통').forEach(r => {
         const [monthLabel, institution, limit, used] = r;
@@ -2748,13 +2757,13 @@ function holdingsTable(holdings, accId, editable, showRegion, alignMode, mergeDu
     const qtyGreen = '#D4FF3D';
     const nameColor = isCash ? cashColor : (isQtyMode ? '' : 'color:var(--text-dim);');
     const qtyAmountColor = isQtyMode ? `color:${qtyGreen};` : (isCash ? '' : 'color:var(--text-dim);');
-    const qtySuffix = isQtyMode ? `<span style="color:${qtyGreen};margin-left:10px;">${h.quantity.toLocaleString()}주</span>` : '';
     return `
     <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:14px;">
-      <div style="flex:2;min-width:90px;text-align:left;${nameColor}${sortCursor}" ${sortable?'data-sortcell="name"':''}>${displayName}</div>
+      <div style="flex:0 1 130px;min-width:70px;text-align:left;${nameColor}${sortCursor}" ${sortable?'data-sortcell="name"':''}>${displayName}</div>
       <div style="flex:1.6;min-width:125px;text-align:${amountAlign};padding-right:10px;box-sizing:border-box;${cashColor || qtyAmountColor}${sortCursor}" class="num" ${sortable?'data-sortcell="amount"':''}>${h.amount.toLocaleString()}</div>
       <div style="flex:0 0 72px;width:72px;color:var(--text-dim);text-align:${groupAlign};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-right:-22px;${sortCursor}" ${sortable?'data-sortcell="group"':''}>${escapeHTML(h.group)}</div>
-      ${showRegion ? `<div style="flex:1;min-width:70px;color:var(--text-dim);text-align:${regionAlign};${sortCursor}" ${sortable?'data-sortcell="region"':''}>/${h.region==='overseas'?'해외':'국내'}${qtySuffix}</div>` : ''}
+      ${showRegion ? `<div style="flex:0 0 44px;color:var(--text-dim);text-align:${regionAlign};${sortCursor}" ${sortable?'data-sortcell="region"':''}>/${h.region==='overseas'?'해외':'국내'}</div>` : ''}
+      ${isQtyMode ? `<div style="flex:0 0 60px;color:${qtyGreen};text-align:left;">${h.quantity.toLocaleString()}주</div>` : (showRegion ? '<div style="flex:0 0 60px;"></div>' : '')}
       ${editable ? `<div style="flex-shrink:0;text-align:right;"><button class="del" data-edit="${h.id}">수정</button> <button class="del" data-del="${h.id}">삭제</button></div>` : ''}
     </div>`;
   }).join('');
@@ -3898,7 +3907,7 @@ function renderPanel(){
       </div>
       <div></div>
     </div>
-    <div style="margin-bottom:10px;">
+    <div style="margin-bottom:10px;text-align:center;">
       <button class="btn-memo" id="openAddHoldingBtn">종목추가</button>
     </div>
     <div style="overflow-x:auto;">${holdingsTable(acc.holdings, acc.id, true, true, false, false, accountTableSortMode)}</div>
