@@ -191,7 +191,9 @@
 <body>
 <div style="position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden;" aria-hidden="true">머니파이 MONEY PIE — 여러 증권사에 흩어진 연금저축·IRP·ISA·직투 계좌를 한곳에 모아 섹터·지역·계좌유형별로 보여주는 무료 도구예요. 로그인도, 증권사 연동도 없어서 안전해요.</div>
 <div class="wrap">
-  <button class="mkt-refresh" id="mktRefreshBtn" style="margin-bottom:4px;">새로고침</button><span style="font-size:11px;color:var(--text-dim);margin-left:4px;">- 20분 지연 시세</span>
+  <div style="display:flex;align-items:center;gap:4px;margin-bottom:4px;">
+    <button class="mkt-refresh" id="mktRefreshBtn">새로고침</button><span style="font-size:11px;color:var(--text-dim);">- 20분 지연 시세</span>
+  </div>
   <div id="marketTicker" style="display:flex;gap:8px;overflow-x:auto;padding:2px 0 14px;margin-bottom:14px;border-bottom:1px solid var(--border);">
     <div style="color:var(--text-dim);font-size:12px;padding:10px 0;">시장 지표 불러오는 중...</div>
   </div>
@@ -523,14 +525,48 @@ function syncQuantityHoldingsAmounts(){
   });
 }
 
+let lastPriceRefreshAt = 0;
+const PRICE_REFRESH_COOLDOWN_MS = 5 * 60 * 1000; // 5분
+
+function applyReloadBtnCooldownVisual(btn){
+  const elapsed = Date.now() - lastPriceRefreshAt;
+  if(elapsed < PRICE_REFRESH_COOLDOWN_MS){
+    btn.disabled = true;
+    btn.style.background = '#555555';
+    btn.style.color = '#999999';
+    btn.style.cursor = 'default';
+    const remain = PRICE_REFRESH_COOLDOWN_MS - elapsed;
+    setTimeout(() => {
+      // 그 사이 다른 탭으로 이동해 버튼이 재생성됐을 수 있으니, 지금 DOM에 있는 버튼만 갱신
+      const liveBtn = document.getElementById('reloadPricesBtn');
+      if(liveBtn) applyReloadBtnCooldownVisual(liveBtn);
+    }, remain);
+  } else {
+    btn.disabled = false;
+    btn.style.background = '#D4FF3D';
+    btn.style.color = '#111';
+    btn.style.cursor = 'pointer';
+  }
+}
+
 function bindReloadPricesBtn(){
   const btn = document.getElementById('reloadPricesBtn');
   if(!btn) return;
+  applyReloadBtnCooldownVisual(btn);
   btn.addEventListener('click', async () => {
+    if(btn.disabled) return;
     const hasQty = state.accounts.some(a => (a.holdings||[]).some(h => h.quantity != null && h.symbol));
-    if(!hasQty){ btn.textContent = '주식수 종목 없음'; setTimeout(() => { btn.textContent = '↻ 가격갱신'; }, 1500); return; }
+    if(!hasQty){
+      const original = btn.textContent;
+      btn.textContent = '없음';
+      btn.style.fontSize = '12px';
+      setTimeout(() => { btn.textContent = original; btn.style.fontSize = '20px'; }, 1500);
+      return;
+    }
     btn.disabled = true;
-    btn.textContent = '갱신 중...';
+    btn.style.fontSize = '12px';
+    btn.textContent = '갱신중';
+    lastPriceRefreshAt = Date.now();
     await refreshAllQuantityHoldingPrices();
   });
 }
@@ -2773,10 +2809,10 @@ function holdingsTable(holdings, accId, editable, showRegion, alignMode, mergeDu
     <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:14px;">
       <div style="flex:0 1 130px;min-width:70px;text-align:left;${nameColor}${sortCursor}" ${sortable?'data-sortcell="name"':''}>${displayName}</div>
       <div style="flex:0 0 160px;text-align:${amountAlign};padding-right:10px;box-sizing:border-box;${cashColor || qtyAmountColor}${sortCursor}" class="num" ${sortable?'data-sortcell="amount"':''}>${h.amount.toLocaleString()}</div>
+      <div style="flex:1;"></div>
       <div style="flex:0 0 72px;width:72px;color:var(--text-dim);text-align:${groupAlign};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-right:-22px;${sortCursor}" ${sortable?'data-sortcell="group"':''}>${escapeHTML(h.group)}</div>
       ${showRegion ? `<div style="flex:0 0 44px;color:var(--text-dim);text-align:${regionAlign};${sortCursor}" ${sortable?'data-sortcell="region"':''}>/${h.region==='overseas'?'해외':'국내'}</div>` : ''}
-      ${isQtyMode ? `<div style="flex:0 0 60px;color:${qtyGreen};text-align:left;">${h.quantity.toLocaleString()}주</div>` : (showRegion ? '<div style="flex:0 0 60px;"></div>' : '')}
-      <div style="flex:1;"></div>
+      ${isQtyMode ? `<div style="flex:0 0 90px;white-space:nowrap;color:${qtyGreen};text-align:left;">${h.quantity.toLocaleString()}주</div>` : (showRegion ? '<div style="flex:0 0 90px;"></div>' : '')}
       ${editable ? `<div style="flex-shrink:0;text-align:right;"><button class="del" data-edit="${h.id}">수정</button> <button class="del" data-del="${h.id}">삭제</button></div>` : ''}
     </div>`;
   }).join('');
@@ -3772,7 +3808,7 @@ function renderPanel(){
 
     panel.innerHTML = `
       <div style="position:relative;">
-        <button id="reloadPricesBtn" style="position:absolute;top:0;left:0;background:none;border:1px solid var(--border);color:var(--text-dim);border-radius:6px;padding:4px 8px;font-size:12px;cursor:pointer;">↻ 가격갱신</button>
+        <button id="reloadPricesBtn" style="position:absolute;top:0;left:0;width:44px;height:44px;display:flex;align-items:center;justify-content:center;background:#D4FF3D;color:#111;border:none;border-radius:8px;font-size:20px;font-weight:700;cursor:pointer;">↻</button>
       </div>
       <div class="account-header" style="justify-content:center;flex-direction:column;gap:4px;">
         <span class="total-badge">자산<span class="num">${total.toLocaleString()}원</span></span>
@@ -3861,7 +3897,7 @@ function renderPanel(){
 
     panel.innerHTML = `
       <div style="position:relative;">
-        <button id="reloadPricesBtn" style="position:absolute;top:0;left:0;background:none;border:1px solid var(--border);color:var(--text-dim);border-radius:6px;padding:4px 8px;font-size:12px;cursor:pointer;">↻ 가격갱신</button>
+        <button id="reloadPricesBtn" style="position:absolute;top:0;left:0;width:44px;height:44px;display:flex;align-items:center;justify-content:center;background:#D4FF3D;color:#111;border:none;border-radius:8px;font-size:20px;font-weight:700;cursor:pointer;">↻</button>
       </div>
       <div class="account-header" style="justify-content:center;flex-direction:column;gap:0;">
         ${thisMonthSnap ? `<div style="position:relative;margin-bottom:14px;"><button class="btn-memo" data-memosnap="${thisMonthSnap.id}">메모</button><div id="snap-memo-slot-${thisMonthSnap.id}"></div></div>` : ''}
@@ -3921,7 +3957,7 @@ function renderPanel(){
 
   panel.innerHTML = `
     <div class="account-header" style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center;">
-      <div><button id="reloadPricesBtn" style="background:none;border:1px solid var(--border);color:var(--text-dim);border-radius:6px;padding:4px 8px;font-size:12px;cursor:pointer;">↻ 가격갱신</button></div>
+      <div><button id="reloadPricesBtn" style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;background:#D4FF3D;color:#111;border:none;border-radius:8px;font-size:20px;font-weight:700;cursor:pointer;">↻</button></div>
       <div style="display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;">
         <button class="btn" id="typeBtn" style="padding:4px 10px;font-size:12px;">${escapeHTML(acc.accountType||'직투')}</button>
         <span class="total-badge">자산<span class="num">${accTotal.toLocaleString()}원</span></span>
