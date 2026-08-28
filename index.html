@@ -2772,10 +2772,11 @@ function holdingsTable(holdings, accId, editable, showRegion, alignMode, mergeDu
     return `
     <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:14px;">
       <div style="flex:0 1 130px;min-width:70px;text-align:left;${nameColor}${sortCursor}" ${sortable?'data-sortcell="name"':''}>${displayName}</div>
-      <div style="flex:1.6;min-width:125px;text-align:${amountAlign};padding-right:10px;box-sizing:border-box;${cashColor || qtyAmountColor}${sortCursor}" class="num" ${sortable?'data-sortcell="amount"':''}>${h.amount.toLocaleString()}</div>
+      <div style="flex:0 0 160px;text-align:${amountAlign};padding-right:10px;box-sizing:border-box;${cashColor || qtyAmountColor}${sortCursor}" class="num" ${sortable?'data-sortcell="amount"':''}>${h.amount.toLocaleString()}</div>
       <div style="flex:0 0 72px;width:72px;color:var(--text-dim);text-align:${groupAlign};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-right:-22px;${sortCursor}" ${sortable?'data-sortcell="group"':''}>${escapeHTML(h.group)}</div>
       ${showRegion ? `<div style="flex:0 0 44px;color:var(--text-dim);text-align:${regionAlign};${sortCursor}" ${sortable?'data-sortcell="region"':''}>/${h.region==='overseas'?'해외':'국내'}</div>` : ''}
       ${isQtyMode ? `<div style="flex:0 0 60px;color:${qtyGreen};text-align:left;">${h.quantity.toLocaleString()}주</div>` : (showRegion ? '<div style="flex:0 0 60px;"></div>' : '')}
+      <div style="flex:1;"></div>
       ${editable ? `<div style="flex-shrink:0;text-align:right;"><button class="del" data-edit="${h.id}">수정</button> <button class="del" data-del="${h.id}">삭제</button></div>` : ''}
     </div>`;
   }).join('');
