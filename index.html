@@ -221,7 +221,7 @@
 
 <div id="editModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;align-items:center;justify-content:center;padding:20px;">
   <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:24px;width:320px;max-width:100%;">
-    <h3 style="margin:0 0 16px;font-size:16px;font-weight:700;">종목 수정</h3>
+    <h3 id="editModalTitle" style="margin:0 0 16px;font-size:16px;font-weight:700;">종목 수정</h3>
     <div style="display:flex;flex-direction:column;gap:10px;">
       <div style="position:relative;">
         <input id="editName" placeholder="종목명" autocomplete="off" style="width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:14px;font-family:inherit;">
@@ -230,7 +230,7 @@
       <div style="display:flex;gap:6px;">
         <span id="editModeBadge" style="flex:1;min-width:0;height:36px;display:inline-flex;align-items:center;justify-content:center;padding:0 8px;font-size:14px;font-weight:700;border-radius:6px;color:#888;background:transparent;border:1px solid var(--border);box-sizing:border-box;">평가액</span>
       </div>
-      <div id="editModeQtyHint" style="display:none;font-size:11px;color:var(--text-dim);margin-top:-4px;">종목명 자동완성 목록에서 실제 상장 종목을 선택하면 개수 입력이 가능해져요.</div>
+      <div id="editModeQtyHint" style="display:none;font-size:11px;color:var(--text-dim);margin-top:-4px;">종목명 자동완성 목록에서 실제 상장 종목을 선택하면 주식수 입력이 가능해져요.</div>
       <input id="editAmount" type="number" placeholder="평가액" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:14px;font-family:inherit;">
       <input id="editQty" type="number" placeholder="개수(수량)" style="display:none;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:14px;font-family:inherit;">
       <div id="editQtyPreview" style="display:none;font-size:12px;color:var(--text-dim);"></div>
@@ -1603,7 +1603,7 @@ function setEditMode(mode){
   const qtyPreview = document.getElementById('editQtyPreview');
   if(mode === 'qty'){
     badge.textContent = '주식수';
-    badge.style.background = '#AEEA00';
+    badge.style.background = '#D4FF3D';
     badge.style.color = '#111';
     badge.style.border = 'none';
     amountInput.style.display = 'none';
@@ -1635,6 +1635,7 @@ function editHolding(accId, holdId){
   const h = acc.holdings.find(x => x.id === holdId);
   if(!h) return;
   editContext = { accId, holdId };
+  document.getElementById('editModalTitle').textContent = '종목 수정';
   document.getElementById('editName').value = h.name;
   document.getElementById('editAmount').value = h.amount;
   document.getElementById('editGroup').value = h.group;
@@ -1645,6 +1646,21 @@ function editHolding(accId, holdId){
   editResolvedCode = hasCode ? { code: h.symbol, region: h.region } : null;
   document.getElementById('editModeQtyHint').style.display = editResolvedCode ? 'none' : '';
   setEditMode(hasCode ? 'qty' : 'amount');
+  updateEditQtyPreview();
+  document.getElementById('editName').focus();
+}
+function openAddHolding(accId){
+  editContext = { accId, holdId: null };
+  document.getElementById('editModalTitle').textContent = '종목추가';
+  document.getElementById('editName').value = '';
+  document.getElementById('editAmount').value = '';
+  document.getElementById('editGroup').value = '';
+  document.getElementById('editRegion').value = 'domestic';
+  document.getElementById('editQty').value = '';
+  document.getElementById('editModal').style.display = 'flex';
+  editResolvedCode = null;
+  document.getElementById('editModeQtyHint').style.display = '';
+  setEditMode('amount');
   updateEditQtyPreview();
   document.getElementById('editName').focus();
 }
@@ -1665,8 +1681,10 @@ function closeEditModal(){
 async function saveEditModal(){
   if(!editContext) return;
   const acc = getAccount(editContext.accId);
-  const h = acc && acc.holdings.find(x => x.id === editContext.holdId);
-  if(!h) { closeEditModal(); return; }
+  if(!acc) { closeEditModal(); return; }
+  const isNew = editContext.holdId == null;
+  const h = isNew ? null : acc.holdings.find(x => x.id === editContext.holdId);
+  if(!isNew && !h) { closeEditModal(); return; }
   const name = document.getElementById('editName').value.trim();
   const group = document.getElementById('editGroup').value.trim();
   const region = document.getElementById('editRegion').value;
@@ -1674,7 +1692,7 @@ async function saveEditModal(){
   if(editMode === 'qty'){
     if(!editResolvedCode){ alert('종목명 자동완성에서 실제 상장 종목을 선택해주세요.'); return; }
     quantity = parseFloat(document.getElementById('editQty').value);
-    if(isNaN(quantity)){ alert('개수를 확인해주세요.'); return; }
+    if(isNaN(quantity)){ alert('주식수를 확인해주세요.'); return; }
     const priceReq = { symbol: editResolvedCode.code, region: editResolvedCode.region, fallbackText: editResolvedCode.fallbackText };
     const result = await refreshHoldingPrice(priceReq);
     if(!result || result.price == null){ alert('가격을 가져오지 못했습니다. 잠시 후 다시 시도해주세요.'); return; }
@@ -1685,6 +1703,12 @@ async function saveEditModal(){
   } else {
     amount = parseFloat(document.getElementById('editAmount').value);
     if(!name || isNaN(amount)){ alert('종목명과 평가액을 확인해주세요.'); return; }
+  }
+  if(isNew){
+    const opts = editMode === 'qty' ? { quantity, symbol, yahooSymbol, fallbackText } : null;
+    addHolding(acc.id, name, group, amount, region, opts);
+    closeEditModal();
+    return;
   }
   if(name === '원화'){
     h.name = '현금'; h.amount = amount; h.group = '현금'; h.region = 'domestic';
@@ -2721,7 +2745,7 @@ function holdingsTable(holdings, accId, editable, showRegion, alignMode, mergeDu
     const displayName = isCash ? (h.region === 'overseas' ? '외화' : '원화') : escapeHTML(h.name);
     const cashColor = isCash ? 'color:#F0DA8C;font-weight:700;' : '';
     const isQtyMode = h.quantity != null && h.symbol;
-    const qtyGreen = '#AEEA00';
+    const qtyGreen = '#D4FF3D';
     const nameColor = isCash ? cashColor : (isQtyMode ? '' : 'color:var(--text-dim);');
     const qtyAmountColor = isQtyMode ? `color:${qtyGreen};` : (isCash ? '' : 'color:var(--text-dim);');
     const qtySuffix = isQtyMode ? `<span style="color:${qtyGreen};margin-left:10px;">${h.quantity.toLocaleString()}주</span>` : '';
@@ -2729,7 +2753,7 @@ function holdingsTable(holdings, accId, editable, showRegion, alignMode, mergeDu
     <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:14px;">
       <div style="flex:2;min-width:90px;text-align:left;${nameColor}${sortCursor}" ${sortable?'data-sortcell="name"':''}>${displayName}</div>
       <div style="flex:1.6;min-width:125px;text-align:${amountAlign};padding-right:10px;box-sizing:border-box;${cashColor || qtyAmountColor}${sortCursor}" class="num" ${sortable?'data-sortcell="amount"':''}>${h.amount.toLocaleString()}</div>
-      <div style="flex:1.3;min-width:80px;color:var(--text-dim);text-align:${groupAlign};margin-right:-16px;${sortCursor}" ${sortable?'data-sortcell="group"':''}>${escapeHTML(h.group)}</div>
+      <div style="flex:0 0 72px;width:72px;color:var(--text-dim);text-align:${groupAlign};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-right:-22px;${sortCursor}" ${sortable?'data-sortcell="group"':''}>${escapeHTML(h.group)}</div>
       ${showRegion ? `<div style="flex:1;min-width:70px;color:var(--text-dim);text-align:${regionAlign};${sortCursor}" ${sortable?'data-sortcell="region"':''}>/${h.region==='overseas'?'해외':'국내'}${qtySuffix}</div>` : ''}
       ${editable ? `<div style="flex-shrink:0;text-align:right;"><button class="del" data-edit="${h.id}">수정</button> <button class="del" data-del="${h.id}">삭제</button></div>` : ''}
     </div>`;
@@ -3874,23 +3898,9 @@ function renderPanel(){
       </div>
       <div></div>
     </div>
-    <form class="add-row" id="addForm">
-      <div style="position:relative;flex:2;min-width:160px;">
-        <input class="name" placeholder="종목 (예: 원화,삼성전자,069500,WDC)" required autocomplete="off" style="width:100%;box-sizing:border-box;">
-        <div id="nameAutocomplete" style="position:absolute;top:100%;left:0;right:0;z-index:20;"></div>
-      </div>
-      <span id="addModeBadge" style="flex-shrink:0;min-width:64px;height:34px;display:inline-flex;align-items:center;justify-content:center;padding:0 12px;font-size:14px;font-weight:700;border-radius:6px;color:#888;background:transparent;border:1px solid var(--border);box-sizing:border-box;">평가액</span>
-      <input class="amount" type="number" placeholder="평가액" required min="0">
-      <input class="qty" type="number" placeholder="개수" style="display:none;">
-      <input class="group" placeholder="섹터 (예: 현금,반도체)">
-      <select class="region">
-        <option value="domestic">국내</option>
-        <option value="overseas">해외</option>
-      </select>
-      <button type="submit">추가</button>
-    </form>
-    <div id="addFormModeHint" style="display:none;font-size:11px;color:var(--text-dim);margin-top:-4px;margin-bottom:6px;">종목명 자동완성 목록에서 실제 상장 종목을 선택하면 개수 입력이 가능해져요.</div>
-    <div id="addFormQtyPreview" style="font-size:12px;color:var(--text-dim);margin-top:-4px;margin-bottom:8px;"></div>
+    <div style="margin-bottom:10px;">
+      <button class="btn-memo" id="openAddHoldingBtn">종목추가</button>
+    </div>
     <div style="overflow-x:auto;">${holdingsTable(acc.holdings, acc.id, true, true, false, false, accountTableSortMode)}</div>
     <div class="charts">
       ${(sectorAccordionShowRegionBar = true, '')}
@@ -3906,82 +3916,7 @@ function renderPanel(){
   document.getElementById('typeBtn').addEventListener('click', () => changeAccountType(acc.id));
   bindSectorAccordionHandlers();
   bindRegionAccordionHandlers();
-  let addFormMode = 'amount';
-  let addResolvedCode = null;
-  const addFormEl = document.getElementById('addForm');
-  function setAddFormMode(mode){
-    addFormMode = mode;
-    const badge = document.getElementById('addModeBadge');
-    const nameVal = addFormEl.querySelector('.name').value.trim();
-    if(mode === 'qty'){
-      badge.textContent = '주식수';
-      badge.style.background = '#AEEA00';
-      badge.style.color = '#111';
-      badge.style.border = 'none';
-    } else if(nameVal){
-      badge.textContent = '평가액';
-      badge.style.background = 'var(--accent)';
-      badge.style.color = '#111';
-      badge.style.border = 'none';
-    } else {
-      badge.textContent = '평가액';
-      badge.style.background = 'transparent';
-      badge.style.color = '#888';
-      badge.style.border = '1px solid var(--border)';
-    }
-    const amountInput = addFormEl.querySelector('.amount');
-    const qtyInput = addFormEl.querySelector('.qty');
-    amountInput.style.display = mode === 'qty' ? 'none' : '';
-    qtyInput.style.display = mode === 'qty' ? '' : 'none';
-    amountInput.required = mode !== 'qty';
-    qtyInput.required = mode === 'qty';
-    document.getElementById('addFormQtyPreview').textContent = '';
-  }
-  addFormEl.querySelector('.name').addEventListener('input', () => { if(addFormMode !== 'qty') setAddFormMode('amount'); });
-  async function updateAddFormQtyPreview(){
-    const qty = parseFloat(addFormEl.querySelector('.qty').value);
-    const previewEl = document.getElementById('addFormQtyPreview');
-    if(!addResolvedCode || isNaN(qty)){ previewEl.textContent = ''; return; }
-    previewEl.textContent = '가격 조회 중...';
-    const result = await refreshHoldingPrice({ symbol: addResolvedCode.code, region: addResolvedCode.region, fallbackText: addResolvedCode.fallbackText });
-    if(!result || result.price == null){ previewEl.textContent = '가격을 가져오지 못했습니다.'; return; }
-    const computed = Math.round(qty * result.krwPrice);
-    previewEl.textContent = `현재가 ${result.price.toLocaleString()}${result.currency && result.currency!=='KRW' ? ' '+result.currency : ''} → 평가액 약 ${computed.toLocaleString()}원`;
-  }
-  addFormEl.querySelector('.qty').addEventListener('change', updateAddFormQtyPreview);
-  document.getElementById('addForm').addEventListener('submit', async e => {
-    e.preventDefault();
-    const f = e.target;
-    const name = f.querySelector('.name').value.trim();
-    const group = f.querySelector('.group').value.trim();
-    const regionEl = f.querySelector('.region');
-    const region = regionEl ? regionEl.value : 'domestic';
-    if(addFormMode === 'qty'){
-      const qty = parseFloat(f.querySelector('.qty').value);
-      if(!name || !addResolvedCode || isNaN(qty)) return;
-      const priceReq = { symbol: addResolvedCode.code, region: addResolvedCode.region, fallbackText: addResolvedCode.fallbackText };
-      const result = await refreshHoldingPrice(priceReq);
-      if(!result || result.price == null){ alert('가격을 가져오지 못했습니다. 잠시 후 다시 시도해주세요.'); return; }
-      const amount = Math.round(qty * result.krwPrice);
-      addHolding(acc.id, name, group, amount, region, { quantity: qty, symbol: addResolvedCode.code, yahooSymbol: priceReq.yahooSymbol || result.symbol, fallbackText: addResolvedCode.fallbackText });
-    } else {
-      const amount = parseFloat(f.querySelector('.amount').value);
-      if(!name || isNaN(amount)) return;
-      addHolding(acc.id, name, group, amount, region);
-    }
-  });
-
-  setupStockNameAutocomplete(
-    document.getElementById('addForm').querySelector('.name'),
-    document.getElementById('nameAutocomplete'),
-    document.getElementById('addForm').querySelector('.group'),
-    document.getElementById('addForm').querySelector('.region'),
-    (resolved) => {
-      addResolvedCode = resolved;
-      document.getElementById('addFormModeHint').style.display = resolved ? 'none' : '';
-      setAddFormMode(resolved ? 'qty' : 'amount');
-    }
-  );
+  document.getElementById('openAddHoldingBtn').addEventListener('click', () => openAddHolding(acc.id));
   panel.querySelectorAll('[data-del]').forEach(btn => {
     btn.addEventListener('click', () => deleteHolding(acc.id, btn.dataset.del));
   });
