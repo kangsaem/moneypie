@@ -523,6 +523,18 @@ function syncQuantityHoldingsAmounts(){
   });
 }
 
+function bindReloadPricesBtn(){
+  const btn = document.getElementById('reloadPricesBtn');
+  if(!btn) return;
+  btn.addEventListener('click', async () => {
+    const hasQty = state.accounts.some(a => (a.holdings||[]).some(h => h.quantity != null && h.symbol));
+    if(!hasQty){ btn.textContent = '주식수 종목 없음'; setTimeout(() => { btn.textContent = '↻ 가격갱신'; }, 1500); return; }
+    btn.disabled = true;
+    btn.textContent = '갱신 중...';
+    await refreshAllQuantityHoldingPrices();
+  });
+}
+
 async function refreshAllQuantityHoldingPrices(){
   const targets = [];
   state.accounts.forEach(acc => (acc.holdings||[]).forEach(h => { if(h.quantity != null && h.symbol) targets.push(h); }));
@@ -3758,6 +3770,9 @@ function renderPanel(){
     const cashPct = total ? (cashTotal/total*100) : 0;
 
     panel.innerHTML = `
+      <div style="position:relative;">
+        <button id="reloadPricesBtn" style="position:absolute;top:0;left:0;background:none;border:1px solid var(--border);color:var(--text-dim);border-radius:6px;padding:4px 8px;font-size:12px;cursor:pointer;">↻ 가격갱신</button>
+      </div>
       <div class="account-header" style="justify-content:center;flex-direction:column;gap:4px;">
         <span class="total-badge">자산<span class="num">${total.toLocaleString()}원</span></span>
         <span class="total-badge" data-cashbadge="${cashTotal}" style="position:relative;cursor:pointer;display:inline-flex;align-items:center;gap:6px;color:${cashRatioColor(cashPct)};">현금비중<span class="num" style="font-size:24px;color:${cashRatioColor(cashPct)};">${cashPct.toFixed(1)}<span style="font-size:12px;font-weight:400;">%</span></span></span>
@@ -3782,6 +3797,7 @@ function renderPanel(){
     if(stockDetailBtnRegion) stockDetailBtnRegion.addEventListener('click', toggleStockDetailAccordion);
     const cashBadgeRegion = panel.querySelector('[data-cashbadge]');
     if(cashBadgeRegion) cashBadgeRegion.addEventListener('click', () => toggleCashAmountAccordion(parseFloat(cashBadgeRegion.dataset.cashbadge), cashBadgeRegion));
+    bindReloadPricesBtn();
     const stockSortChart = document.getElementById('stock-sortable-chart');
     if(stockSortChart) stockSortChart.querySelectorAll('.legend-item').forEach(el => {
       el.style.cursor = 'pointer';
@@ -3843,6 +3859,9 @@ function renderPanel(){
     const cashPctAll = grandTotal ? (cashTotalAll/grandTotal*100) : 0;
 
     panel.innerHTML = `
+      <div style="position:relative;">
+        <button id="reloadPricesBtn" style="position:absolute;top:0;left:0;background:none;border:1px solid var(--border);color:var(--text-dim);border-radius:6px;padding:4px 8px;font-size:12px;cursor:pointer;">↻ 가격갱신</button>
+      </div>
       <div class="account-header" style="justify-content:center;flex-direction:column;gap:0;">
         ${thisMonthSnap ? `<div style="position:relative;margin-bottom:14px;"><button class="btn-memo" data-memosnap="${thisMonthSnap.id}">메모</button><div id="snap-memo-slot-${thisMonthSnap.id}"></div></div>` : ''}
         <span class="total-badge">자산<span class="num">${grandTotal.toLocaleString()}원</span></span>
@@ -3882,6 +3901,7 @@ function renderPanel(){
     if(stockDetailBtn) stockDetailBtn.addEventListener('click', toggleStockDetailAccordion);
     const cashBadgeTotal = panel.querySelector('[data-cashbadge]');
     if(cashBadgeTotal) cashBadgeTotal.addEventListener('click', () => toggleCashAmountAccordion(parseFloat(cashBadgeTotal.dataset.cashbadge), cashBadgeTotal));
+    bindReloadPricesBtn();
     const stockSortChartTotal = document.getElementById('stock-sortable-chart');
     if(stockSortChartTotal) stockSortChartTotal.querySelectorAll('.legend-item').forEach(el => {
       el.style.cursor = 'pointer';
@@ -3900,7 +3920,7 @@ function renderPanel(){
 
   panel.innerHTML = `
     <div class="account-header" style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center;">
-      <div></div>
+      <div><button id="reloadPricesBtn" style="background:none;border:1px solid var(--border);color:var(--text-dim);border-radius:6px;padding:4px 8px;font-size:12px;cursor:pointer;">↻ 가격갱신</button></div>
       <div style="display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;">
         <button class="btn" id="typeBtn" style="padding:4px 10px;font-size:12px;">${escapeHTML(acc.accountType||'직투')}</button>
         <span class="total-badge">자산<span class="num">${accTotal.toLocaleString()}원</span></span>
@@ -3926,6 +3946,7 @@ function renderPanel(){
   bindSectorAccordionHandlers();
   bindRegionAccordionHandlers();
   document.getElementById('openAddHoldingBtn').addEventListener('click', () => openAddHolding(acc.id));
+  bindReloadPricesBtn();
   panel.querySelectorAll('[data-del]').forEach(btn => {
     btn.addEventListener('click', () => deleteHolding(acc.id, btn.dataset.del));
   });
