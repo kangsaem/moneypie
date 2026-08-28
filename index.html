@@ -205,6 +205,8 @@
       <button class="btn" id="importBtn">데이터 불러오기</button>
       <input type="file" id="importFile" accept="application/json" style="display:none;">
       <button class="btn" id="exportXlsxBtn" style="background:#217346;color:rgba(255,255,255,0.75);border-color:#217346;font-weight:400;">엑셀 보내기</button>
+      <button class="btn" id="importXlsxBtn">엑셀 불러오기</button>
+      <input type="file" id="importXlsxFile" accept=".xlsx" style="display:none;">
       <button class="btn btn-primary" id="snapshotBtn">이번달 자산 저장</button>
     </div>
   </header>
@@ -225,7 +227,14 @@
         <input id="editName" placeholder="종목명" autocomplete="off" style="width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:14px;font-family:inherit;">
         <div id="editNameAutocomplete" style="position:absolute;top:100%;left:0;right:0;z-index:2000;"></div>
       </div>
+      <div style="display:flex;gap:6px;">
+        <button type="button" id="editModeAmountBtn" class="btn" style="flex:1;padding:6px;font-size:12px;">평가액 직접입력</button>
+        <button type="button" id="editModeQtyBtn" class="btn" style="flex:1;padding:6px;font-size:12px;">개수로 계산</button>
+      </div>
       <input id="editAmount" type="number" placeholder="평가액" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:14px;font-family:inherit;">
+      <input id="editSymbol" placeholder="심볼 (예: 005930.KS, AAPL)" style="display:none;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:14px;font-family:inherit;">
+      <input id="editQty" type="number" placeholder="개수(수량)" style="display:none;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:14px;font-family:inherit;">
+      <div id="editQtyPreview" style="display:none;font-size:12px;color:var(--text-dim);"></div>
       <input id="editGroup" placeholder="섹터" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:14px;font-family:inherit;">
       <select id="editRegion" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:14px;font-family:inherit;">
         <option value="domestic">국내</option>
@@ -421,6 +430,7 @@ const CREDIT_REMAIN_COLOR = '#9A9BA1';
 
 let state = { accounts: [], activeId: null, snapshots: [], domesticSubType: null, overseasSubType: null, historyRange: '6', creditLines: [] };
 let historyAccountFilter = null;
+let historyAccountTypeFilter = null;
 
 const MARKET_SYMBOLS = [
   { key:'kospi', symbol:'^KS11', name:'코스피' },
@@ -440,6 +450,65 @@ const KR_OVERRIDE_KEYS = [];
 // 미국 지수(S&P500/나스닥)도 야후 무료 데이터가 약 15분 지연되는 것으로 알려져 있어,
 // 그래프 우측 끝(장마감) 기준에 지연시간만큼 버퍼를 더해준다.
 const NAVER_INDEX_MAP = { kospi:'KOSPI', kosdaq:'KOSDAQ' };
+
+let holdingPriceCache = {}; // { symbol: { price, currency, fetchedAt } }
+
+async function fetchHoldingPrice(symbol){
+  const targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=1d&interval=1d&_=${Date.now()}`;
+  let res;
+  try{
+    res = await fetchWithTimeout(targetUrl, { cache: 'no-store' }, 3000);
+    if(!res.ok) throw new Error('direct fetch failed');
+  }catch(e){
+    res = await fetchWithTimeout(`https://moneypie-proxy.y0n2.workers.dev/?url=${encodeURIComponent(targetUrl)}`, { cache: 'no-store' }, 5000);
+  }
+  const data = await res.json();
+  const result = data.chart.result[0];
+  const price = result.meta.regularMarketPrice;
+  const currency = result.meta.currency;
+  return { price, currency };
+}
+
+async function refreshHoldingPrice(symbol){
+  if(!symbol) return null;
+  try{
+    const { price, currency } = await fetchHoldingPrice(symbol);
+    holdingPriceCache[symbol] = { price, currency, fetchedAt: Date.now() };
+    return holdingPriceCache[symbol];
+  }catch(e){
+    return holdingPriceCache[symbol] || null;
+  }
+}
+
+// 개수 기반(quantity+symbol) 보유종목의 amount를 캐시된 최신가로 동기화한다.
+// amount는 항상 유효한 숫자로 유지되어야, 스냅샷 저장을 포함한 기존 코드 전체가
+// 아무 변경 없이 그대로 동작한다 (스냅샷은 state.accounts를 그대로 깊은 복사만 함).
+function syncQuantityHoldingsAmounts(){
+  state.accounts.forEach(acc => {
+    (acc.holdings||[]).forEach(h => {
+      if(h.quantity != null && h.symbol){
+        const cached = holdingPriceCache[h.symbol];
+        if(cached && cached.price != null){
+          let krwRate = 1;
+          if(cached.currency && cached.currency !== 'KRW'){
+            krwRate = (marketData && marketData.usdkrw && marketData.usdkrw.price) || 1;
+          }
+          h.amount = Math.round(h.quantity * cached.price * krwRate);
+        }
+      }
+    });
+  });
+}
+
+async function refreshAllQuantityHoldingPrices(){
+  const symbols = new Set();
+  state.accounts.forEach(acc => (acc.holdings||[]).forEach(h => { if(h.quantity != null && h.symbol) symbols.add(h.symbol); }));
+  if(symbols.size === 0) return;
+  await Promise.allSettled(Array.from(symbols).map(sym => refreshHoldingPrice(sym)));
+  syncQuantityHoldingsAmounts();
+  save();
+  render();
+}
 
 function fetchWithTimeout(url, opts, ms){
   const controller = new AbortController();
@@ -978,6 +1047,31 @@ function exportXLSX(){
     snapshotRows.push([fullMonthLabel(s.label), total, domestic, overseas, creditUsed, s.memo || '']);
   });
 
+  const snapshotDetailRows = [['월','계좌명','계좌유형','종목','섹터','지역','평가액']];
+  state.snapshots.forEach(s => {
+    s.accounts.forEach(a => {
+      a.holdings.forEach(h => {
+        const name = isCashHolding(h) ? (h.region === 'overseas' ? '외화' : '원화') : h.name;
+        snapshotDetailRows.push([
+          fullMonthLabel(s.label),
+          a.name,
+          a.accountType || '직투',
+          name,
+          h.group,
+          h.region === 'overseas' ? '해외' : '국내',
+          h.amount
+        ]);
+      });
+    });
+  });
+
+  const snapshotCreditRows = [['월','기관명','한도','사용액']];
+  state.snapshots.forEach(s => {
+    (s.creditLines || []).forEach(c => {
+      snapshotCreditRows.push([fullMonthLabel(s.label), c.institution, c.limit, c.used]);
+    });
+  });
+
   const wb = XLSX.utils.book_new();
   const wsHoldings = XLSX.utils.aoa_to_sheet(holdingRows);
   XLSX.utils.book_append_sheet(wb, wsHoldings, '보유종목');
@@ -990,11 +1084,124 @@ function exportXLSX(){
   if(state.snapshots.length > 0){
     const wsSnap = XLSX.utils.aoa_to_sheet(snapshotRows);
     XLSX.utils.book_append_sheet(wb, wsSnap, '월별변화');
+    const wsSnapDetail = XLSX.utils.aoa_to_sheet(snapshotDetailRows);
+    XLSX.utils.book_append_sheet(wb, wsSnapDetail, '월별상세종목');
+    if(snapshotCreditRows.length > 1){
+      const wsSnapCredit = XLSX.utils.aoa_to_sheet(snapshotCreditRows);
+      XLSX.utils.book_append_sheet(wb, wsSnapCredit, '월별마통');
+    }
   }
 
   const d = new Date();
   const dateStr = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
   XLSX.writeFile(wb, `money-pie-${dateStr}.xlsx`);
+}
+
+function importXLSX(file){
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    try{
+      const data = new Uint8Array(e.target.result);
+      const wb = XLSX.read(data, { type: 'array' });
+
+      function sheetRows(name){
+        const ws = wb.Sheets[name];
+        if(!ws) return [];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+        return rows.slice(1).filter(r => r && r.length > 0 && r[0] !== undefined && r[0] !== '');
+      }
+      function toNum(v){
+        return typeof v === 'number' && !isNaN(v) ? v : (parseFloat(v) || 0);
+      }
+      function rowToHolding(name, group, region, amount){
+        const isCash = (name === '원화' || name === '외화');
+        return {
+          id: uid(),
+          name: isCash ? '현금' : String(name || ''),
+          group: isCash ? '현금' : String(group || '기타'),
+          amount: toNum(amount),
+          region: (region === '해외' || name === '외화') ? 'overseas' : 'domestic'
+        };
+      }
+      function buildAccountsFromRows(rows){
+        const byAccount = {};
+        const order = [];
+        rows.forEach(r => {
+          const [accName, accType, holdName, group, region, amount] = r;
+          const key = accName + '||' + accType;
+          if(!byAccount[key]){
+            byAccount[key] = { id: uid(), name: String(accName || '계좌'), accountType: ACCOUNT_TYPES.includes(accType) ? accType : '직투', holdings: [] };
+            order.push(key);
+          }
+          byAccount[key].holdings.push(rowToHolding(holdName, group, region, amount));
+        });
+        return order.map(k => byAccount[k]);
+      }
+
+      const holdingRows = sheetRows('보유종목');
+      const newAccounts = buildAccountsFromRows(holdingRows);
+
+      const creditRows = sheetRows('마통현황');
+      const newCreditLines = creditRows.map(r => ({
+        id: uid(), institution: String(r[0] || ''), limit: toNum(r[1]), used: toNum(r[2])
+      }));
+
+      const byMonth = {};
+      function ensureMonth(rawLabel){
+        if(!byMonth[rawLabel]) byMonth[rawLabel] = { accountRows: [], creditRows: [], memo: '' };
+        return byMonth[rawLabel];
+      }
+
+      sheetRows('월별상세종목').forEach(r => {
+        const [monthLabel, accName, accType, holdName, group, region, amount] = r;
+        const rawLabel = String(monthLabel || '').replace(/-/g, '');
+        ensureMonth(rawLabel).accountRows.push([accName, accType, holdName, group, region, amount]);
+      });
+      sheetRows('월별마통').forEach(r => {
+        const [monthLabel, institution, limit, used] = r;
+        const rawLabel = String(monthLabel || '').replace(/-/g, '');
+        ensureMonth(rawLabel).creditRows.push([institution, limit, used]);
+      });
+      sheetRows('월별변화').forEach(r => {
+        const [monthLabel, , , , , memo] = r;
+        const rawLabel = String(monthLabel || '').replace(/-/g, '');
+        ensureMonth(rawLabel).memo = memo || '';
+      });
+
+      const newSnapshots = Object.keys(byMonth).map(rawLabel => {
+        const info = byMonth[rawLabel];
+        return {
+          id: uid(),
+          label: rawLabel,
+          timestamp: Date.now(),
+          accounts: buildAccountsFromRows(info.accountRows),
+          creditLines: info.creditRows.map(([institution, limit, used]) => ({
+            id: uid(), institution: String(institution || ''), limit: toNum(limit), used: toNum(used)
+          })),
+          memo: info.memo
+        };
+      });
+
+      if(newAccounts.length === 0 && newSnapshots.length === 0){
+        throw new Error('빈 파일');
+      }
+
+      showConfirmModal('현재 데이터를 덮어쓰고 엑셀 파일로 복원할까요?', '복원', '#4FC3F7', async () => {
+        state.accounts = normalizeAccounts(newAccounts.length > 0 ? newAccounts : [{ id: uid(), name: '계좌 1', holdings: [] }]);
+        state.creditLines = normalizeCreditLines(newCreditLines);
+        state.snapshots = normalizeSnapshots(newSnapshots);
+        state.activeId = '__total__';
+        await save();
+        await saveSnapshots();
+        await saveCreditLines();
+        render();
+        showNoticeModal('엑셀 파일로부터 데이터를 복원했습니다.');
+      });
+    }catch(err){
+      alert('엑셀 파일을 읽을 수 없습니다. 머니파이에서 내보낸 파일인지 확인해주세요.');
+    }
+  };
+  reader.readAsArrayBuffer(file);
 }
 
 function importData(file){
@@ -1243,14 +1450,13 @@ function setupStockNameAutocomplete(nameInput, acHolder, groupInput, regionSelec
 }
 
 function cashRatioColor(pct){
-  if(pct < 5) return '#B85450';    // 어두운 빨강 (마통사용과 동일)
-  if(pct < 10) return '#C2477C';   // 진한 핑크
-  if(pct < 15) return '#E8A0BC';   // 연한 핑크
-  if(pct < 20) return '#F5D2DE';   // 많이 연한 핑크
-  if(pct < 30) return '#FFFFFF';   // 흰색
-  if(pct < 40) return '#D2ECFA';   // 많이 연한 하늘색
-  if(pct < 50) return '#8FCBEA';   // 연한 하늘색
-  if(pct < 60) return '#2E86C1';   // 진한 하늘색
+  if(pct < 5) return '#C2477C';    // 진한 핑크
+  if(pct < 10) return '#E8A0BC';   // 연한 핑크
+  if(pct < 15) return '#F5D2DE';   // 많이 연한 핑크
+  if(pct < 25) return '#FFFFFF';   // 흰색
+  if(pct < 35) return '#D2ECFA';   // 연한 하늘색
+  if(pct < 50) return '#8FCBEA';   // 하늘색
+  if(pct < 60) return '#4FA8D8';   // 파란색
   if(pct < 80) return '#1A5276';   // 진한 파란색
   return '#7C6499';                // 보라 (계좌유형별과 동일)
 }
@@ -1324,7 +1530,7 @@ async function fetchStockNameByCode(code){
   return match || null;
 }
 
-function addHolding(accId, name, group, amount, region){
+function addHolding(accId, name, group, amount, region, opts){
   const acc = getAccount(accId);
   let finalName = name, finalGroup = group || '기타', finalRegion = region || 'domestic';
   if(name === '원화'){
@@ -1332,7 +1538,12 @@ function addHolding(accId, name, group, amount, region){
   } else if(name === '외화'){
     finalName = '현금'; finalGroup = '현금'; finalRegion = 'overseas';
   }
-  acc.holdings.push({ id: uid(), name: finalName, group: finalGroup, amount, region: finalRegion });
+  const holding = { id: uid(), name: finalName, group: finalGroup, amount, region: finalRegion };
+  if(opts && opts.quantity != null && opts.symbol){
+    holding.quantity = opts.quantity;
+    holding.symbol = opts.symbol;
+  }
+  acc.holdings.push(holding);
   save(); render();
 }
 function deleteHolding(accId, holdId){
@@ -1345,6 +1556,31 @@ function deleteHolding(accId, holdId){
   });
 }
 let editContext = null;
+let editMode = 'amount'; // 'amount' | 'qty'
+function setEditMode(mode){
+  editMode = mode;
+  const amountBtn = document.getElementById('editModeAmountBtn');
+  const qtyBtn = document.getElementById('editModeQtyBtn');
+  const amountInput = document.getElementById('editAmount');
+  const symbolInput = document.getElementById('editSymbol');
+  const qtyInput = document.getElementById('editQty');
+  const qtyPreview = document.getElementById('editQtyPreview');
+  if(mode === 'qty'){
+    amountBtn.style.background = ''; amountBtn.style.color = '';
+    qtyBtn.style.background = 'var(--accent)'; qtyBtn.style.color = '#111';
+    amountInput.style.display = 'none';
+    symbolInput.style.display = '';
+    qtyInput.style.display = '';
+    qtyPreview.style.display = '';
+  } else {
+    qtyBtn.style.background = ''; qtyBtn.style.color = '';
+    amountBtn.style.background = 'var(--accent)'; amountBtn.style.color = '#111';
+    amountInput.style.display = '';
+    symbolInput.style.display = 'none';
+    qtyInput.style.display = 'none';
+    qtyPreview.style.display = 'none';
+  }
+}
 function editHolding(accId, holdId){
   const acc = getAccount(accId);
   const h = acc.holdings.find(x => x.id === holdId);
@@ -1354,24 +1590,52 @@ function editHolding(accId, holdId){
   document.getElementById('editAmount').value = h.amount;
   document.getElementById('editGroup').value = h.group;
   document.getElementById('editRegion').value = h.region === 'overseas' ? 'overseas' : 'domestic';
+  document.getElementById('editSymbol').value = h.symbol || '';
+  document.getElementById('editQty').value = h.quantity != null ? h.quantity : '';
   document.getElementById('editModal').style.display = 'flex';
+  setEditMode(h.quantity != null && h.symbol ? 'qty' : 'amount');
+  updateEditQtyPreview();
   document.getElementById('editName').focus();
+}
+async function updateEditQtyPreview(){
+  const symbol = document.getElementById('editSymbol').value.trim();
+  const qty = parseFloat(document.getElementById('editQty').value);
+  const previewEl = document.getElementById('editQtyPreview');
+  if(!symbol || isNaN(qty)){ previewEl.textContent = ''; return; }
+  previewEl.textContent = '가격 조회 중...';
+  const result = await refreshHoldingPrice(symbol);
+  if(!result || result.price == null){ previewEl.textContent = '가격을 가져오지 못했습니다. 심볼을 확인해주세요.'; return; }
+  let krwRate = 1;
+  if(result.currency && result.currency !== 'KRW') krwRate = (marketData && marketData.usdkrw && marketData.usdkrw.price) || 1;
+  const computed = Math.round(qty * result.price * krwRate);
+  previewEl.textContent = `현재가 ${result.price.toLocaleString()} ${result.currency} → 평가액 약 ${computed.toLocaleString()}원`;
 }
 function closeEditModal(){
   document.getElementById('editModal').style.display = 'none';
   editContext = null;
 }
-function saveEditModal(){
+async function saveEditModal(){
   if(!editContext) return;
   const acc = getAccount(editContext.accId);
   const h = acc && acc.holdings.find(x => x.id === editContext.holdId);
   if(!h) { closeEditModal(); return; }
   const name = document.getElementById('editName').value.trim();
-  const amountStr = document.getElementById('editAmount').value;
-  const amount = parseFloat(amountStr);
   const group = document.getElementById('editGroup').value.trim();
   const region = document.getElementById('editRegion').value;
-  if(!name || isNaN(amount)){ alert('종목명과 평가액을 확인해주세요.'); return; }
+  let amount, quantity = null, symbol = null;
+  if(editMode === 'qty'){
+    symbol = document.getElementById('editSymbol').value.trim();
+    quantity = parseFloat(document.getElementById('editQty').value);
+    if(!symbol || isNaN(quantity)){ alert('심볼과 개수를 확인해주세요.'); return; }
+    const result = await refreshHoldingPrice(symbol);
+    if(!result || result.price == null){ alert('가격을 가져오지 못했습니다. 심볼을 확인해주세요.'); return; }
+    let krwRate = 1;
+    if(result.currency && result.currency !== 'KRW') krwRate = (marketData && marketData.usdkrw && marketData.usdkrw.price) || 1;
+    amount = Math.round(quantity * result.price * krwRate);
+  } else {
+    amount = parseFloat(document.getElementById('editAmount').value);
+    if(!name || isNaN(amount)){ alert('종목명과 평가액을 확인해주세요.'); return; }
+  }
   if(name === '원화'){
     h.name = '현금'; h.amount = amount; h.group = '현금'; h.region = 'domestic';
   } else if(name === '외화'){
@@ -1382,6 +1646,8 @@ function saveEditModal(){
     h.group = group || '기타';
     h.region = region;
   }
+  if(editMode === 'qty'){ h.quantity = quantity; h.symbol = symbol; }
+  else { delete h.quantity; delete h.symbol; }
   save();
   closeEditModal();
   render();
@@ -1572,6 +1838,7 @@ function donutSVG(data, size, type){
       // 거의 100%에 가까운 조각은 원호(arc) 시작/끝점이 반올림되어 같은 좌표가 되면서
       // SVG가 그리지 못하는 문제가 생기므로, 이 경우엔 그냥 꽉 찬 원으로 그린다.
       paths += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${color}" data-slice-idx="${i}"/>`;
+      if(d.tintOverlay) paths += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${d.tintOverlay}"/>`;
       angle += sweep;
       return;
     }
@@ -1581,7 +1848,9 @@ function donutSVG(data, size, type){
     const end = angle + sweep;
     const x2 = cx + r*Math.cos(end*Math.PI/180);
     const y2 = cy + r*Math.sin(end*Math.PI/180);
-    paths += `<path d="M${cx},${cy} L${x1.toFixed(2)},${y1.toFixed(2)} A${r},${r} 0 ${large} 1 ${x2.toFixed(2)},${y2.toFixed(2)} Z" fill="${color}" data-slice-idx="${i}"/>`;
+    const slicePathD = `M${cx},${cy} L${x1.toFixed(2)},${y1.toFixed(2)} A${r},${r} 0 ${large} 1 ${x2.toFixed(2)},${y2.toFixed(2)} Z`;
+    paths += `<path d="${slicePathD}" fill="${color}" data-slice-idx="${i}"/>`;
+    if(d.tintOverlay) paths += `<path d="${slicePathD}" fill="${d.tintOverlay}"/>`;
     angle = end;
   });
   paths += `<circle cx="${cx}" cy="${cy}" r="${hole}" fill="var(--surface2)"/>`;
@@ -1910,6 +2179,7 @@ function accordionRowHTML(label, pct){
 }
 
 let sectorOtherItems = [];
+let sectorOtherExpanded = false;
 function sectorLegendHTML(holdings){
   sectorAccordionHoldings = holdings;
   sectorAccordionOpenIdx = null;
@@ -1924,12 +2194,18 @@ function sectorLegendHTML(holdings){
     sectorOtherItems = smallItems;
     grouped = [...bigItems, { label: '기타', amount: otherAmount, pct: otherPct, group: '기타' }];
   }
-  const ordered = reorderCashFirst(grouped);
-  sectorAccordionOrdered = ordered;
-  const legend = ordered.map((d,i) => {
+  // 파이(도넛)는 항상 전체 세부 섹터를 그대로 표시하고, 기타에 해당하는 조각만 파란 틴트를 씌운다
+  const otherLabels = new Set(sectorOtherItems.map(d => d.label));
+  const pieSource = byGroup.map(d => otherLabels.has(d.label) ? { ...d, tintOverlay: 'rgba(66,133,244,0.5)' } : d);
+  const pieOrdered = reorderCashFirst(pieSource);
+  // 목록(범례)은 '기타 펼침' 상태면 병합하지 않은 원본을 사용
+  const legendSource = (sectorOtherExpanded && sectorOtherItems.length > 0) ? byGroup : grouped;
+  const legendOrdered = reorderCashFirst(legendSource);
+  sectorAccordionOrdered = legendOrdered;
+  const legend = legendOrdered.map((d,i) => {
     const rank = d.rank !== undefined ? d.rank : i;
-    const rankCount = d.rankCount !== undefined ? d.rankCount : ordered.length;
-    const color = d.label === '기타' ? '#9A9BA1' : rankColor(d.label, rank, rankCount, 'group');
+    const rankCount = d.rankCount !== undefined ? d.rankCount : legendOrdered.length;
+    const color = d.label === '기타' ? NAVY_STRONG : rankColor(d.label, rank, rankCount, 'group');
     const isCashLabel = isCashLikeLabel(d.label);
     const cashStyle = isCashLabel ? 'color:#F0DA8C;font-weight:700;' : '';
     return `<div style="position:relative;">
@@ -1937,7 +2213,7 @@ function sectorLegendHTML(holdings){
       <div id="sector-slot-${i}"></div>
     </div>`;
   }).join('');
-  return { legend, ordered };
+  return { legend, ordered: pieOrdered };
 }
 
 function computeRegionQuad(holdings){
@@ -2051,22 +2327,28 @@ function clearChartHighlight(triggerEl, ringName){
 }
 
 function cycleSectorSelection(){
-  const total = sectorAccordionOrdered ? sectorAccordionOrdered.length : 0;
+  const fullOrdered = reorderCashFirst(computeWeights(sectorAccordionHoldings, 'group')).filter(d => d.label !== '현금');
+  const total = fullOrdered.length;
   if(total === 0) return;
-  const curIdx = sectorAccordionOpenIdx === null ? -1 : parseInt(sectorAccordionOpenIdx, 10);
-  let nextIdx = curIdx + 1;
-  while(nextIdx < total && sectorAccordionOrdered[nextIdx] && sectorAccordionOrdered[nextIdx].label === '현금'){
-    nextIdx++;
-  }
+  const curIdx = sectorAccordionOpenLabel === null ? -1 : fullOrdered.findIndex(d => d.label === sectorAccordionOpenLabel);
+  const nextIdx = curIdx + 1;
   if(nextIdx >= total){
-    const el = document.querySelector(`[data-sector-idx="${curIdx}"]`);
+    // 끝까지 순환했으면 마지막 항목을 다시 클릭해 닫는다
+    const el = document.querySelector(`[data-sector-label="${CSS.escape(sectorAccordionOpenLabel || '')}"]`);
     if(el) el.click();
     return;
   }
-  const el = document.querySelector(`[data-sector-idx="${nextIdx}"]`);
+  const nextLabel = fullOrdered[nextIdx].label;
+  const isOtherMember = sectorOtherItems.some(d => d.label === nextLabel);
+  if(isOtherMember && !sectorOtherExpanded){
+    sectorOtherExpanded = true;
+    render();
+  }
+  const el = document.querySelector(`[data-sector-label="${CSS.escape(nextLabel)}"]`);
   if(el) el.click();
 }
 
+let sectorAccordionOpenLabel = null;
 function renderSectorBreakdown(label, slot, triggerEl, idx){
   const holdings = sectorAccordionHoldings.filter(h => h.group === label);
   const regionLabelFn = (label === '현금') ? regionLabelFor : mergedRegionLabelFor;
@@ -2092,37 +2374,10 @@ function renderSectorBreakdown(label, slot, triggerEl, idx){
   const closeBtn = slot.querySelector('[data-acc-close]');
   if(closeBtn) closeBtn.addEventListener('click', () => triggerEl.click());
   sectorAccordionOpenIdx = idx;
+  sectorAccordionOpenLabel = label;
   highlightChartSlice(triggerEl, idx, 'decorative-sector');
   const centerLabelEl2 = document.getElementById('sector-center-label');
   if(centerLabelEl2) centerLabelEl2.textContent = label;
-}
-
-function renderSectorOtherList(slot, triggerEl, idx){
-  const rows = sectorOtherItems.map(d =>
-    `<div class="legend-item" data-sector-other-label="${escapeHTML(d.label)}" style="cursor:pointer;"><span class="legend-name">${escapeHTML(d.label)}</span><span class="legend-pct num">${d.pct.toFixed(1)}<span class="pct-sign">%</span></span></div>`
-  ).join('');
-  slot.innerHTML = `<div class="floating-acc" style="background:#EDEDED;color:#333333;border-radius:6px;text-align:left;box-sizing:border-box;width:240px;max-height:300px;display:flex;flex-direction:column;position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:4px;z-index:${++accordionZIndexCounter};box-shadow:0 4px 12px rgba(0,0,0,0.4);cursor:grab;overflow:hidden;">
-    <div class="acc-header" style="background:#C9C9C9;padding:0 0 0 12px;display:flex;align-items:stretch;height:26px;flex-shrink:0;">
-      <span style="font-size:13px;font-weight:700;color:#333333;display:flex;align-items:center;">기타</span>
-      <span class="drag-grip-icon" style="margin-left:auto;padding:0 8px;color:#999999;font-size:13px;letter-spacing:-2px;user-select:none;pointer-events:none;display:flex;align-items:center;">⠿</span><button data-acc-close style="width:26px;height:100%;background:#E87BA4;border:none;border-radius:0;color:#EDEDED;font-size:15px;font-weight:700;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">&times;</button>
-    </div>
-    <div class="acc-body" style="padding:4px 12px;overflow-y:auto;">
-      ${rows}
-    </div>
-  </div>`;
-  makeAccordionDraggable(slot.querySelector('.floating-acc'));
-  const closeBtn = slot.querySelector('[data-acc-close]');
-  if(closeBtn) closeBtn.addEventListener('click', () => triggerEl.click());
-  slot.querySelectorAll('[data-sector-other-label]').forEach(row => {
-    row.addEventListener('click', (e) => {
-      e.stopPropagation();
-      renderSectorBreakdown(row.dataset.sectorOtherLabel, slot, triggerEl, idx);
-    });
-  });
-  sectorAccordionOpenIdx = idx;
-  highlightChartSlice(triggerEl, idx, 'decorative-sector');
-  const centerLabelEl2 = document.getElementById('sector-center-label');
-  if(centerLabelEl2) centerLabelEl2.textContent = '기타';
 }
 
 function bindSectorAccordionHandlers(){
@@ -2134,6 +2389,22 @@ function bindSectorAccordionHandlers(){
       const idx = el.dataset.sectorIdx;
       const label = el.dataset.sectorLabel;
       if(label === '현금') return;
+      if(label === '기타'){
+        sectorOtherExpanded = true;
+        render();
+        return;
+      }
+      const isOtherMember = sectorOtherItems.some(d => d.label === label);
+      if(sectorOtherExpanded && !isOtherMember){
+        // 큰 섹터(기타 소속이 아닌 항목)를 클릭하면 기타 목록은 접는다
+        sectorOtherExpanded = false;
+        sectorAccordionOpenIdx = null;
+        sectorAccordionOpenLabel = null;
+        render();
+        const newEl = document.querySelector(`[data-sector-label="${CSS.escape(label)}"]`);
+        if(newEl) newEl.click();
+        return;
+      }
       if(sectorAccordionOpenIdx !== null && sectorAccordionOpenIdx !== idx){
         const prevSlot = document.getElementById('sector-slot-' + sectorAccordionOpenIdx);
         if(prevSlot) prevSlot.innerHTML = '';
@@ -2143,16 +2414,13 @@ function bindSectorAccordionHandlers(){
       if(sectorAccordionOpenIdx === idx){
         slot.innerHTML = '';
         sectorAccordionOpenIdx = null;
+        sectorAccordionOpenLabel = null;
         clearChartHighlight(el, 'decorative-sector');
         const centerLabelEl = document.getElementById('sector-center-label');
         if(centerLabelEl) centerLabelEl.textContent = '섹터';
         return;
       }
-      if(label === '기타'){
-        renderSectorOtherList(slot, el, idx);
-      } else {
-        renderSectorBreakdown(label, slot, el, idx);
-      }
+      renderSectorBreakdown(label, slot, el, idx);
     });
   });
 }
@@ -2501,7 +2769,7 @@ function lineChartSVG(points, extraSeries, width, height, labelMode, responsive)
 
   (extraSeries || []).forEach((s) => {
     const isRegionSeries = s.name === '국내' || s.name === '해외';
-    const seriesOpacity = isRegionSeries ? 0.6 : 1;
+    const seriesOpacity = s.name === '국내' ? 0.8 : (s.name === '해외' ? 0.6 : 1);
     const c = s.points.map((p,i) => [padX + i*xStep, scaleY(p.value)]);
 
     if(s.area){
@@ -2531,7 +2799,7 @@ function lineChartSVG(points, extraSeries, width, height, labelMode, responsive)
         const isLowest = lowestSeriesIndexAt[i] === myIdx;
         const ly = isLowest ? pt[1] + 20 : pt[1] - 10;
         const fs = Math.max(10, Math.round(13.5*scale));
-        return labelMarkup(pt[0], ly, Math.floor(s.points[i].value/10000).toLocaleString(), fs, 600, s.color, isRegionSeries ? 'opacity:0.6;' : '');
+        return labelMarkup(pt[0], ly, Math.floor(s.points[i].value/10000).toLocaleString(), fs, 600, s.color, isRegionSeries ? `opacity:${seriesOpacity};` : '');
       }).join('');
     }
     extraPaths += `<path d="${path}" fill="none" stroke="${s.color}" stroke-width="1.5" opacity="${seriesOpacity}"/>${sDots}${sLabels}`;
@@ -2853,9 +3121,9 @@ function renderTrendAccordionContent(){
   slot.innerHTML = `<div data-trendclose style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:999;"></div>
   <div class="floating-acc" id="trend-accordion-box" style="background:#EDEDED;color:#333333;border-radius:8px;text-align:left;box-sizing:border-box;width:260px;max-height:70vh;display:flex;flex-direction:column;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;box-shadow:0 8px 24px rgba(0,0,0,0.5);touch-action:pan-y;overflow:hidden;">
     <div style="background:#C9C9C9;display:flex;align-items:stretch;height:26px;flex-shrink:0;">
-      <button data-trendnav="1" ${canPrev?'':'disabled'} style="width:26px;height:100%;background:#4FC3F7;opacity:${canPrev?1:0.2};border:none;border-radius:0;color:#EDEDED;font-size:15px;font-weight:700;line-height:1;cursor:${canPrev?'pointer':'default'};display:flex;align-items:center;justify-content:center;flex-shrink:0;">‹</button>
+      <button data-trendnav="1" ${canPrev?'':'disabled'} style="width:26px;height:100%;background:#4FC3F7;opacity:${canPrev?1:0};border:none;border-radius:0;color:#EDEDED;font-size:15px;font-weight:700;line-height:1;cursor:${canPrev?'pointer':'default'};display:flex;align-items:center;justify-content:center;flex-shrink:0;">‹</button>
       <span style="flex:1;text-align:center;font-size:13px;font-weight:700;color:#333333;display:flex;align-items:center;justify-content:center;">${escapeHTML(entry.monthLabel)}</span>
-      <button data-trendnav="-1" ${canNext?'':'disabled'} style="width:26px;height:100%;background:#4FC3F7;opacity:${canNext?1:0.2};border:none;border-radius:0;color:#EDEDED;font-size:15px;font-weight:700;line-height:1;cursor:${canNext?'pointer':'default'};display:flex;align-items:center;justify-content:center;flex-shrink:0;">›</button>
+      <button data-trendnav="-1" ${canNext?'':'disabled'} style="width:26px;height:100%;background:#4FC3F7;opacity:${canNext?1:0};border:none;border-radius:0;color:#EDEDED;font-size:15px;font-weight:700;line-height:1;cursor:${canNext?'pointer':'default'};display:flex;align-items:center;justify-content:center;flex-shrink:0;">›</button>
     </div>
     <div style="padding:12px 16px;overflow-y:auto;">
       ${rows || '<div class="empty">데이터 없음</div>'}
@@ -2920,7 +3188,7 @@ function renderTabs(){
   tabs.innerHTML = html;
 
   tabs.querySelectorAll('[data-tab]').forEach(el => {
-    el.addEventListener('click', () => { state.activeId = el.dataset.tab; accountTableSortMode = null; stockLegendSortMode = 'amount'; historyAccountFilter = null; totalAccountTypeFilter = null; render(); });
+    el.addEventListener('click', () => { state.activeId = el.dataset.tab; accountTableSortMode = null; stockLegendSortMode = 'amount'; historyAccountFilter = null; historyAccountTypeFilter = null; totalAccountTypeFilter = null; render(); });
   });
   document.getElementById('addAccountBtn').addEventListener('click', addAccount);
 }
@@ -2934,11 +3202,22 @@ function buildAccountFilteredSnapshots(snapshots, accountId){
   }).filter(Boolean);
 }
 
+function buildAccountTypeFilteredSnapshots(snapshots, accountType){
+  if(!accountType) return snapshots;
+  return snapshots.map(s => {
+    const accs = (s.accounts||[]).filter(a => a.accountType === accountType);
+    if(accs.length === 0) return null;
+    return { ...s, accounts: accs };
+  }).filter(Boolean);
+}
+
 function renderHistoryPanel(){
   const panel = document.getElementById('panel');
   const sorted = state.snapshots;
   const range = state.historyRange;
-  const accountFilteredSnapshots = historyAccountFilter ? buildAccountFilteredSnapshots(sorted, historyAccountFilter) : sorted;
+  const accountFilteredSnapshots = historyAccountFilter
+    ? buildAccountFilteredSnapshots(sorted, historyAccountFilter)
+    : (historyAccountTypeFilter ? buildAccountTypeFilteredSnapshots(sorted, historyAccountTypeFilter) : sorted);
   const filtered = range === 'all' ? accountFilteredSnapshots : accountFilteredSnapshots.slice(-parseInt(range, 10));
 
   const points = filtered.map(s => ({
@@ -2959,9 +3238,11 @@ function renderHistoryPanel(){
   }));
 
   const accountSelector = `
-    <div id="historyAccSelector" style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:10px;">
-      <button class="btn" data-history-acc="" style="padding:4px 10px;font-size:12px;flex-shrink:0;${!historyAccountFilter ? 'background:var(--accent);color:#111;' : ''}">전체</button>
+    <div id="historyAccSelector" style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:6px;">
       ${state.accounts.map(a => `<button class="btn" data-history-acc="${a.id}" style="padding:4px 10px;font-size:12px;flex-shrink:0;${historyAccountFilter===a.id ? 'background:var(--accent);color:#111;' : ''}">${escapeHTML(a.name)}</button>`).join('')}
+    </div>
+    <div id="historyAccTypeSelector" style="display:flex;gap:6px;margin-bottom:10px;">
+      ${['직투','연금','DC','IRP','ISA'].map(t => `<button class="btn" data-history-acc-type="${t}" style="padding:4px 10px;font-size:12px;flex-shrink:0;min-width:52px;text-align:center;${historyAccountTypeFilter===t ? 'background:var(--accent);color:#111;' : ''}">${t}</button>`).join('')}
     </div>
   `;
 
@@ -2974,7 +3255,7 @@ function renderHistoryPanel(){
     </div>
   `;
 
-  const hasCreditData = !historyAccountFilter && creditUsedPoints.some(p => p.value > 0);
+  const hasCreditData = !historyAccountFilter && !historyAccountTypeFilter && creditUsedPoints.some(p => p.value > 0);
   const domesticAllZero = domesticPoints.every(p => Math.abs(p.value) < 1);
   const overseasAllZero = overseasPoints.every(p => Math.abs(p.value) < 1);
   const showRegionLines = !domesticAllZero && !overseasAllZero;
@@ -2993,7 +3274,7 @@ function renderHistoryPanel(){
       <div class="trend-wrap">${lineChartSVG(points, lineSeries, 860, 205, range === '24' ? 'shrink' : (range === 'all' ? 'sparse' : ((range === '6' || range === '12') ? 'small' : 'normal')), range === 'all' || range === '3' || range === '6')}</div>
     </div>
     ${trendBarsHTML(filtered, 'group', 'group', '섹터', range === 'all' || range === '24', 'group')}
-    ${trendBarsHTML(filtered, regionLabelFor, 'region', '국내/해외', range === 'all' || range === '24', 'region')}
+    ${trendBarsHTML(filtered, regionLabelFor, 'region', '지역', range === 'all' || range === '24', 'region')}
     ${trendBarsHTML(filtered, 'name', 'stock', '종목', range === 'all' || range === '24', 'stock')}
   `;
   const trendScrollEl = panel.querySelector('.trend-scroll');
@@ -3002,7 +3283,9 @@ function renderHistoryPanel(){
     btn.addEventListener('click', () => {
       const selectorEl = document.getElementById('historyAccSelector');
       const scrollPos = selectorEl ? selectorEl.scrollLeft : 0;
-      historyAccountFilter = btn.dataset.historyAcc || null;
+      const clickedId = btn.dataset.historyAcc;
+      historyAccountFilter = (historyAccountFilter === clickedId) ? null : clickedId;
+      historyAccountTypeFilter = null;
       openTrendRowId = null;
       openTrendSeriesPrefix = null;
       openTrendIdx = null;
@@ -3010,6 +3293,18 @@ function renderHistoryPanel(){
       render();
       const newSelectorEl = document.getElementById('historyAccSelector');
       if(newSelectorEl) newSelectorEl.scrollLeft = scrollPos;
+    });
+  });
+  document.querySelectorAll('[data-history-acc-type]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const clickedType = btn.dataset.historyAccType;
+      historyAccountTypeFilter = (historyAccountTypeFilter === clickedType) ? null : clickedType;
+      historyAccountFilter = null;
+      openTrendRowId = null;
+      openTrendSeriesPrefix = null;
+      openTrendIdx = null;
+      document.body.style.overflow = '';
+      render();
     });
   });
   document.getElementById('rangeSelect').addEventListener('change', (e) => {
@@ -3529,7 +3824,11 @@ function renderPanel(){
         <input class="name" placeholder="종목 (예: 원화,삼성전자,069500,WDC)" required autocomplete="off" style="width:100%;box-sizing:border-box;">
         <div id="nameAutocomplete" style="position:absolute;top:100%;left:0;right:0;z-index:20;"></div>
       </div>
+      <button type="button" class="add-mode-toggle" data-add-mode="amount" style="flex-shrink:0;padding:4px 8px;font-size:12px;background:var(--accent);color:#111;border:none;border-radius:6px;cursor:pointer;">평가액</button>
+      <button type="button" class="add-mode-toggle" data-add-mode="qty" style="flex-shrink:0;padding:4px 8px;font-size:12px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;cursor:pointer;">개수</button>
       <input class="amount" type="number" placeholder="평가액" required min="0">
+      <input class="symbol" placeholder="심볼(예: 005930.KS)" style="display:none;">
+      <input class="qty" type="number" placeholder="개수" style="display:none;">
       <input class="group" placeholder="섹터 (예: 현금,반도체)">
       <select class="region">
         <option value="domestic">국내</option>
@@ -3537,6 +3836,7 @@ function renderPanel(){
       </select>
       <button type="submit">추가</button>
     </form>
+    <div id="addFormQtyPreview" style="font-size:12px;color:var(--text-dim);margin-top:-4px;margin-bottom:8px;"></div>
     <div style="overflow-x:auto;">${holdingsTable(acc.holdings, acc.id, true, true, false, false, accountTableSortMode)}</div>
     <div class="charts">
       ${(sectorAccordionShowRegionBar = true, '')}
@@ -3552,16 +3852,61 @@ function renderPanel(){
   document.getElementById('typeBtn').addEventListener('click', () => changeAccountType(acc.id));
   bindSectorAccordionHandlers();
   bindRegionAccordionHandlers();
-  document.getElementById('addForm').addEventListener('submit', e => {
+  let addFormMode = 'amount';
+  const addFormEl = document.getElementById('addForm');
+  function setAddFormMode(mode){
+    addFormMode = mode;
+    addFormEl.querySelectorAll('.add-mode-toggle').forEach(btn => {
+      const active = btn.dataset.addMode === mode;
+      btn.style.background = active ? 'var(--accent)' : 'var(--surface)';
+      btn.style.color = active ? '#111' : 'var(--text)';
+      btn.style.border = active ? 'none' : '1px solid var(--border)';
+    });
+    addFormEl.querySelector('.amount').style.display = mode === 'qty' ? 'none' : '';
+    addFormEl.querySelector('.symbol').style.display = mode === 'qty' ? '' : 'none';
+    addFormEl.querySelector('.qty').style.display = mode === 'qty' ? '' : 'none';
+    document.getElementById('addFormQtyPreview').textContent = '';
+  }
+  addFormEl.querySelectorAll('.add-mode-toggle').forEach(btn => {
+    btn.addEventListener('click', () => setAddFormMode(btn.dataset.addMode));
+  });
+  async function updateAddFormQtyPreview(){
+    const symbol = addFormEl.querySelector('.symbol').value.trim();
+    const qty = parseFloat(addFormEl.querySelector('.qty').value);
+    const previewEl = document.getElementById('addFormQtyPreview');
+    if(!symbol || isNaN(qty)){ previewEl.textContent = ''; return; }
+    previewEl.textContent = '가격 조회 중...';
+    const result = await refreshHoldingPrice(symbol);
+    if(!result || result.price == null){ previewEl.textContent = '가격을 가져오지 못했습니다. 심볼을 확인해주세요.'; return; }
+    let krwRate = 1;
+    if(result.currency && result.currency !== 'KRW') krwRate = (marketData && marketData.usdkrw && marketData.usdkrw.price) || 1;
+    const computed = Math.round(qty * result.price * krwRate);
+    previewEl.textContent = `현재가 ${result.price.toLocaleString()} ${result.currency} → 평가액 약 ${computed.toLocaleString()}원`;
+  }
+  addFormEl.querySelector('.symbol').addEventListener('change', updateAddFormQtyPreview);
+  addFormEl.querySelector('.qty').addEventListener('change', updateAddFormQtyPreview);
+  document.getElementById('addForm').addEventListener('submit', async e => {
     e.preventDefault();
     const f = e.target;
     const name = f.querySelector('.name').value.trim();
     const group = f.querySelector('.group').value.trim();
     const regionEl = f.querySelector('.region');
     const region = regionEl ? regionEl.value : 'domestic';
-    const amount = parseFloat(f.querySelector('.amount').value);
-    if(!name || isNaN(amount)) return;
-    addHolding(acc.id, name, group, amount, region);
+    if(addFormMode === 'qty'){
+      const symbol = f.querySelector('.symbol').value.trim();
+      const qty = parseFloat(f.querySelector('.qty').value);
+      if(!name || !symbol || isNaN(qty)) return;
+      const result = await refreshHoldingPrice(symbol);
+      if(!result || result.price == null){ alert('가격을 가져오지 못했습니다. 심볼을 확인해주세요.'); return; }
+      let krwRate = 1;
+      if(result.currency && result.currency !== 'KRW') krwRate = (marketData && marketData.usdkrw && marketData.usdkrw.price) || 1;
+      const amount = Math.round(qty * result.price * krwRate);
+      addHolding(acc.id, name, group, amount, region, { quantity: qty, symbol });
+    } else {
+      const amount = parseFloat(f.querySelector('.amount').value);
+      if(!name || isNaN(amount)) return;
+      addHolding(acc.id, name, group, amount, region);
+    }
   });
 
   setupStockNameAutocomplete(
@@ -3597,6 +3942,10 @@ function render(){
 }
 
 document.getElementById('editCancelBtn').addEventListener('click', closeEditModal);
+document.getElementById('editModeAmountBtn').addEventListener('click', () => setEditMode('amount'));
+document.getElementById('editModeQtyBtn').addEventListener('click', () => setEditMode('qty'));
+document.getElementById('editSymbol').addEventListener('change', updateEditQtyPreview);
+document.getElementById('editQty').addEventListener('change', updateEditQtyPreview);
 document.getElementById('editCreditCancelBtn').addEventListener('click', closeEditCreditModal);
 document.getElementById('confirmModalCancelBtn').addEventListener('click', closeConfirmModal);
 document.getElementById('confirmModalConfirmBtn').addEventListener('click', () => {
@@ -3660,6 +4009,12 @@ document.getElementById('importBtn').addEventListener('click', () => document.ge
 document.getElementById('importFile').addEventListener('change', (e) => {
   const file = e.target.files[0];
   if(file) importData(file);
+  e.target.value = '';
+});
+document.getElementById('importXlsxBtn').addEventListener('click', () => document.getElementById('importXlsxFile').click());
+document.getElementById('importXlsxFile').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if(file) importXLSX(file);
   e.target.value = '';
 });
 
