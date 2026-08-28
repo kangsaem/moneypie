@@ -1424,42 +1424,26 @@ function setupStockNameAutocomplete(nameInput, acHolder, groupInput, regionSelec
     const isHangul = /[가-힣]/.test(val);
 
     if(isHangul){
-      const matches = Object.keys(history).filter(n => n.includes(val)).slice(0, 4);
-      const localItems = matches.map(n => ({ name: n, isLocal: true, group: history[n].group, region: history[n].region }));
-      if(localItems.length > 0) renderNameDropdown(localItems);
-      else closeAutocomplete();
-
       const myTokenKo = ++engSearchToken;
       engSearchDebounce = setTimeout(async () => {
         let apiItems = [];
         try{ apiItems = await searchNaverAutocomplete(val); }catch(e){}
         if(myTokenKo !== engSearchToken) return;
-        const combined = [
-          ...localItems,
-          ...apiItems.slice(0, 6).map(it => ({ name: it.name, isLocal: false, region: it.region, nationName: it.nationName, isEtf: it.isEtf, code: it.code }))
-        ];
+        const combined = apiItems.slice(0, 8).map(it => ({ name: it.name, isLocal: false, region: it.region, nationName: it.nationName, isEtf: it.isEtf, code: it.code }));
         if(combined.length === 0){ closeAutocomplete(); return; }
         renderNameDropdown(combined);
       }, 300);
       return;
     }
 
-    // 영어(그 외) 입력: 1글자는 아무것도 안 함, 2글자부터 로컬 이력 + 네이버 검색을 함께 표시
+    // 영어(그 외) 입력: 1글자는 아무것도 안 함, 2글자부터 네이버 검색 결과만 표시
     if(val.length < 2){ closeAutocomplete(); return; }
-    const localMatches = Object.keys(history).filter(n => n.toLowerCase().includes(val.toLowerCase())).slice(0, 4);
-    const localItems = localMatches.map(n => ({ name: n, isLocal: true, group: history[n].group, region: history[n].region }));
-    if(localItems.length > 0) renderNameDropdown(localItems);
-    else closeAutocomplete();
-
     const myToken = ++engSearchToken;
     engSearchDebounce = setTimeout(async () => {
       let apiItems = [];
       try{ apiItems = await searchNaverAutocomplete(val); }catch(e){}
       if(myToken !== engSearchToken) return; // 그 사이 사용자가 더 입력해서 이 결과는 낡음
-      const combined = [
-        ...localItems,
-        ...apiItems.slice(0, 6).map(it => ({ name: it.name, isLocal: false, region: it.region, nationName: it.nationName, isEtf: it.isEtf, code: it.code }))
-      ];
+      const combined = apiItems.slice(0, 8).map(it => ({ name: it.name, isLocal: false, region: it.region, nationName: it.nationName, isEtf: it.isEtf, code: it.code }));
       if(combined.length === 0){ closeAutocomplete(); return; }
       renderNameDropdown(combined);
     }, 300);
@@ -3907,8 +3891,12 @@ function renderPanel(){
       btn.style.color = active ? '#111' : 'var(--text)';
       btn.style.border = active ? 'none' : '1px solid var(--border)';
     });
-    addFormEl.querySelector('.amount').style.display = mode === 'qty' ? 'none' : '';
-    addFormEl.querySelector('.qty').style.display = mode === 'qty' ? '' : 'none';
+    const amountInput = addFormEl.querySelector('.amount');
+    const qtyInput = addFormEl.querySelector('.qty');
+    amountInput.style.display = mode === 'qty' ? 'none' : '';
+    qtyInput.style.display = mode === 'qty' ? '' : 'none';
+    amountInput.required = mode !== 'qty';
+    qtyInput.required = mode === 'qty';
     document.getElementById('addFormQtyPreview').textContent = '';
   }
   addFormEl.querySelectorAll('.add-mode-toggle').forEach(btn => {
