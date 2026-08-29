@@ -457,12 +457,12 @@ const NAVER_INDEX_MAP = { kospi:'KOSPI', kosdaq:'KOSDAQ' };
 let holdingPriceCache = {}; // { yahooSymbol: { price, currency, fetchedAt } }
 function formatPricePerShare(h){
   if(h.region === 'overseas' && h.currency && h.currency !== 'KRW' && h.lastPrice != null){
-    const currencyLabel = { USD:'달러', JPY:'엔', EUR:'유로', GBP:'파운드', HKD:'홍콩달러', CNY:'위안' }[h.currency] || h.currency;
+    const currencySymbol = { USD:'$', JPY:'¥', EUR:'€', GBP:'£', HKD:'HK$', CNY:'CN¥' }[h.currency] || h.currency;
     const decimals = (h.currency === 'JPY') ? 0 : 2;
     const priceStr = h.lastPrice.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
-    return `${priceStr}<span style="font-size:10px;">${currencyLabel}</span>`;
+    return `<span style="font-size:10px;">${currencySymbol}</span>${priceStr}`;
   }
-  return `${Math.round(h.amount / h.quantity).toLocaleString()}<span style="font-size:10px;">원</span>`;
+  return `<span style="font-size:10px;">₩</span>${Math.round(h.amount / h.quantity).toLocaleString()}`;
 }
 
 
@@ -2864,7 +2864,7 @@ function holdingsTable(holdings, accId, editable, showRegion, alignMode, mergeDu
     const displayName = isCash ? (h.region === 'overseas' ? '외화' : '원화') : escapeHTML(h.name);
     const cashColor = isCash ? 'color:#F0DA8C;font-weight:700;' : '';
     const isQtyMode = h.quantity != null && h.symbol;
-    const qtyGreen = '#D4FF3D';
+    const qtyGreen = '#E5FF6B';
     const nameColor = isCash ? cashColor : (isQtyMode ? '' : 'color:var(--text-dim);');
     const qtyAmountColor = isQtyMode ? `color:${qtyGreen};` : (isCash ? '' : 'color:var(--text-dim);');
     return `
@@ -2874,7 +2874,7 @@ function holdingsTable(holdings, accId, editable, showRegion, alignMode, mergeDu
       <div style="flex:0 0 140px;text-align:right;padding-right:8px;margin-right:14px;box-sizing:border-box;${cashColor || qtyAmountColor}${sortCursor}" class="num" ${sortable?'data-sortcell="amount"':''}>${h.amount.toLocaleString()}</div>
       <div style="flex:0 0 60px;color:var(--text-dim);text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${sortCursor}" ${sortable?'data-sortcell="group"':''}>${escapeHTML(h.group)}</div>
       <div style="flex:1.4;"></div>
-      ${isQtyMode ? `<div style="flex:0 0 80px;white-space:nowrap;text-align:right;margin-right:14px;cursor:pointer;${showPricePerShare ? 'color:#4FC3F7;' : 'color:var(--text-dim);'}" data-qtytoggle="1">${showPricePerShare ? formatPricePerShare(h) : h.quantity.toLocaleString() + '<span style="font-size:10px;">주</span>'}</div>` : (showRegion ? '<div style="flex:0 0 94px;"></div>' : '')}
+      ${isQtyMode ? `<div style="flex:0 0 80px;white-space:nowrap;text-align:right;margin-right:14px;cursor:pointer;${showPricePerShare ? 'color:#7FDBFF;' : 'color:var(--text-dim);'}" data-qtytoggle="1">${showPricePerShare ? formatPricePerShare(h) : h.quantity.toLocaleString() + '<span style="font-size:10px;">주</span>'}</div>` : (showRegion ? '<div style="flex:0 0 94px;"></div>' : '')}
       ${showRegion ? `<div style="flex:0 0 44px;color:var(--text-dim);text-align:left;${sortCursor}" ${sortable?'data-sortcell="region"':''}>${h.region==='overseas'?'해외':'국내'}</div>` : ''}
       <div style="flex:0.6;"></div>
       ${editable ? `<div style="flex-shrink:0;text-align:right;"><button class="del" data-edit="${h.id}">수정</button> <button class="del" data-del="${h.id}">삭제</button></div>` : ''}
