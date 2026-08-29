@@ -493,8 +493,14 @@ const NATION_YAHOO_SUFFIX = {
 async function resolveYahooPrice(code, region, fallbackText, nationName){
   let candidates;
   if(region === 'overseas'){
-    const suffix = NATION_YAHOO_SUFFIX[nationName];
-    candidates = suffix ? [`${code}${suffix}`, code, fallbackText] : [code, fallbackText];
+    const matchedSuffix = NATION_YAHOO_SUFFIX[nationName];
+    // 국가명이 정확히 매칭되면 그것부터, 안되더라도 자주 쓰이는 접미사들을 순서대로 다 시도
+    const commonSuffixes = ['', '.T', '.HK', '.SS', '.SZ', '.L', '.DE', '.PA', '.TW', '.KS', '.KQ'];
+    const tried = new Set();
+    candidates = [];
+    if(matchedSuffix){ candidates.push(`${code}${matchedSuffix}`); tried.add(matchedSuffix); }
+    commonSuffixes.forEach(suf => { if(!tried.has(suf)){ candidates.push(`${code}${suf}`); tried.add(suf); } });
+    if(fallbackText) candidates.push(fallbackText);
   } else {
     candidates = [`${code}.KS`, `${code}.KQ`];
   }
