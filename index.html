@@ -459,7 +459,8 @@ const CURRENCY_SYMBOLS = { USD:'$', JPY:'¥', EUR:'€', GBP:'£', HKD:'HK$', CN
 function formatPricePerShare(h){
   if(isCashHolding(h)){
     if(h.currency && h.currency !== 'KRW' && h.lastPrice != null){
-      return `${Math.round(h.lastPrice).toLocaleString()}`;
+      const displayRate = h.currency === 'JPY' ? h.lastPrice * 100 : h.lastPrice;
+      return `${Math.round(displayRate).toLocaleString()}`;
     }
     return `${Math.round(h.amount / h.quantity).toLocaleString()}`;
   }
@@ -1832,6 +1833,8 @@ function editHolding(accId, holdId){
   document.getElementById('editModeQtyHint').style.display = editResolvedCode ? 'none' : '';
   const groupInput = document.getElementById('editGroup');
   if(isCashQty){ groupInput.value = '현금'; groupInput.disabled = true; } else { groupInput.disabled = false; }
+  const regionSelectEl = document.getElementById('editRegion');
+  if(isCashQty){ regionSelectEl.value = h.currency === 'KRW' ? 'domestic' : 'overseas'; regionSelectEl.disabled = true; } else { regionSelectEl.disabled = false; }
   setEditMode(hasCode ? 'qty' : 'amount');
   updateEditQtyPreview();
   document.getElementById('editName').focus();
@@ -1843,6 +1846,7 @@ function openAddHolding(accId){
   document.getElementById('editAmount').value = '';
   document.getElementById('editGroup').value = '';
   document.getElementById('editGroup').disabled = false;
+  document.getElementById('editRegion').disabled = false;
   document.getElementById('editRegion').value = 'domestic';
   document.getElementById('editQty').value = '';
   document.getElementById('editModal').style.display = 'flex';
@@ -1866,7 +1870,9 @@ async function updateEditQtyPreview(){
     if(rate == null){ previewEl.textContent = '환율을 가져오지 못했습니다. 잠시 후 다시 시도해주세요.'; return; }
     const computed = Math.round(qty * rate);
     const symbol = CURRENCY_SYMBOLS[editResolvedCode.currency] || '';
-    previewEl.textContent = `현재 환율 1${symbol} = ${Math.round(rate).toLocaleString()}원 → 평가액 약 ${computed.toLocaleString()}원`;
+    const isJpy = editResolvedCode.currency === 'JPY';
+    const rateLabel = isJpy ? `100${symbol} = ${Math.round(rate*100).toLocaleString()}원` : `1${symbol} = ${Math.round(rate).toLocaleString()}원`;
+    previewEl.textContent = `현재 환율 ${rateLabel} → 평가액 약 ${computed.toLocaleString()}원`;
     return;
   }
   previewEl.textContent = '가격 조회 중...';
@@ -4261,11 +4267,15 @@ setupStockNameAutocomplete(
     hint.style.display = resolved ? 'none' : '';
     setEditMode(resolved ? 'qty' : 'amount');
     const groupInput = document.getElementById('editGroup');
+    const regionSelectEl = document.getElementById('editRegion');
     if(resolved && resolved.isCashCurrency){
       groupInput.value = '현금';
       groupInput.disabled = true;
+      regionSelectEl.value = resolved.currency === 'KRW' ? 'domestic' : 'overseas';
+      regionSelectEl.disabled = true;
     } else {
       groupInput.disabled = false;
+      regionSelectEl.disabled = false;
     }
   }
 );
