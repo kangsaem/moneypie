@@ -353,7 +353,7 @@
       </div>
       <div>
         <div style="color:var(--text);font-weight:700;margin-bottom:4px;">Q. 왜 자동으로 연동 안 되고 직접 입력해야 해요?</div>
-        <span style="color:#E8A0BC;font-weight:700;">증권사 자동연동 앱은 로그인 정보와 자산 데이터를 다른 서버에 넘겨야 해요.</span> 약간의 수고 대신 안전함을 택했어요. 종목명 입력은 코드/티커/기존에 입력한 종목 불러오기가 다 적용돼서, 생각보다 손이 많이 안 가요.
+        <span style="color:#E8A0BC;font-weight:700;">증권사 자동연동 앱은 로그인 정보와 자산 데이터를 다른 서버에 넘겨야 해요.</span> 약간의 수고 대신 안전함을 택했어요. 종목명 입력은 코드/티커/키워드로 종목 불러오기가 다 적용돼서, 생각보다 손이 많이 안 가요.
       </div>
       <div>
         <div style="color:var(--text);font-weight:700;margin-bottom:4px;">Q. 다른 자산관리 앱이랑 뭐가 달라요?</div>
@@ -464,7 +464,7 @@ function formatPricePerShare(h){
     const currencySymbol = CURRENCY_SYMBOLS[h.currency] || h.currency;
     const decimals = (h.currency === 'JPY') ? 0 : 2;
     const priceStr = h.lastPrice.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
-    return `<span style="font-size:10px;">${currencySymbol}</span>${priceStr}`;
+    return `<span style="font-size:10px;color:var(--text-dim);">${currencySymbol}</span>${priceStr}`;
   }
   return `${Math.round(h.amount / h.quantity).toLocaleString()}`;
 }
