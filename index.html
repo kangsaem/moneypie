@@ -202,7 +202,7 @@
   <header>
     <div>
       <h1><span style="font-size:1.2em;display:inline-block;vertical-align:bottom;">머니파이</span> <span style="opacity:0.2;display:inline-block;vertical-align:bottom;">MONEY PIE</span></h1>
-      <p class="sub" style="font-size:10px;margin:2px 0 0;">계좌별로 종목/섹터/평가액을 입력하면 비중이 자동 계산됩니다.</p>
+      <p class="sub" style="font-size:10px;margin:2px 0 0;">계좌별로 종목/주식수/섹터를 입력하면 비중이 자동 계산됩니다.</p>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
       <button class="btn" id="exportBtn">데이터 저장하기</button>
@@ -514,21 +514,42 @@ async function resolveYahooPrice(code, region, fallbackText, nationName){
   return null;
 }
 
+let fxRateCache = {}; // { JPY: 9.1, EUR: 1480, ... } KRW 기준 환율
+
+async function fetchFxRate(currency){
+  if(!currency || currency === 'KRW') return 1;
+  if(fxRateCache[currency] != null) return fxRateCache[currency];
+  const result = await fetchYahooHoldingPrice(`${currency}KRW=X`);
+  if(result && result.price != null){
+    fxRateCache[currency] = result.price;
+    return result.price;
+  }
+  return null; // 못 가져온 경우 - 잘못된 환율(예: 달러환율)을 대신 쓰지 않도록 null 반환
+}
+
 function krwPrice(price, currency){
   if(!currency || currency === 'KRW') return price;
-  const rate = (marketData && marketData.usdkrw && marketData.usdkrw.price) || 1;
-  return price * rate;
+  if(fxRateCache[currency] != null) return price * fxRateCache[currency];
+  // 아직 이 통화의 정확한 환율을 못 가져온 상태 - 잘못된 값(예: 달러환율)을 곱하지 않고 0 반환
+  return 0;
 }
 
 // h: { symbol(네이버 코드), region, yahooSymbol?, fallbackText? } 형태의 보유종목 객체를 받는다.
 async function refreshHoldingPrice(h){
   if(!h || !h.symbol) return null;
+  if(isCashHolding(h) && h.currency){
+    const rate = await fetchFxRate(h.currency);
+    if(rate == null) return null;
+    h.lastPrice = rate;
+    return { symbol: h.symbol, price: rate, currency: h.currency, krwPrice: rate };
+  }
   if(h.yahooSymbol){
     const result = await fetchYahooHoldingPrice(h.yahooSymbol);
     if(result && result.price != null){
       holdingPriceCache[h.yahooSymbol] = { price: result.price, currency: result.currency, fetchedAt: Date.now() };
       h.lastPrice = result.price;
       h.currency = result.currency;
+      await fetchFxRate(result.currency);
       return { symbol: h.yahooSymbol, price: result.price, currency: result.currency, krwPrice: krwPrice(result.price, result.currency) };
     }
   }
@@ -538,6 +559,7 @@ async function refreshHoldingPrice(h){
   h.yahooSymbol = resolved.symbol; // 다음부터는 이 형태로 바로 조회
   h.lastPrice = resolved.price;
   h.currency = resolved.currency;
+  await fetchFxRate(resolved.currency);
   return { ...resolved, krwPrice: krwPrice(resolved.price, resolved.currency) };
 }
 
@@ -547,7 +569,13 @@ async function refreshHoldingPrice(h){
 function syncQuantityHoldingsAmounts(){
   state.accounts.forEach(acc => {
     (acc.holdings||[]).forEach(h => {
-      if(h.quantity != null && h.symbol && h.yahooSymbol){
+      if(h.quantity != null && h.symbol && isCashHolding(h) && h.currency){
+        const rate = fxRateCache[h.currency];
+        if(rate != null){
+          h.amount = Math.round(h.quantity * rate);
+          h.lastPrice = rate;
+        }
+      } else if(h.quantity != null && h.symbol && h.yahooSymbol){
         const cached = holdingPriceCache[h.yahooSymbol];
         if(cached && cached.price != null){
           h.amount = Math.round(h.quantity * krwPrice(cached.price, cached.currency));
@@ -1534,6 +1562,28 @@ function setupStockNameAutocomplete(nameInput, acHolder, groupInput, regionSelec
     });
   }
 
+  const CASH_CURRENCY_KEYWORDS = ['달러','엔','유로','원화','외화','현금','돈','예수금'];
+  const CASH_CURRENCY_OPTIONS = [
+    { name: '원화', currency: 'KRW' },
+    { name: '달러', currency: 'USD' },
+    { name: '엔', currency: 'JPY' },
+    { name: '유로', currency: 'EUR' }
+  ];
+  function renderCashCurrencyDropdown(){
+    acHolder.innerHTML = `<div class="floating-acc" style="background:#EDEDED;color:#333333;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.4);overflow:hidden;margin-top:2px;">
+      ${CASH_CURRENCY_OPTIONS.map((opt,idx) => `<div data-cashidx="${idx}" style="padding:8px 10px;font-size:13px;cursor:pointer;border-bottom:1px solid #C9C9C9;">${opt.name}</div>`).join('')}
+    </div>`;
+    acHolder.querySelectorAll('[data-cashidx]').forEach(el => {
+      el.addEventListener('click', () => {
+        const opt = CASH_CURRENCY_OPTIONS[parseInt(el.dataset.cashidx, 10)];
+        nameInput.value = opt.name;
+        if(regionSelect) regionSelect.value = opt.currency === 'KRW' ? 'domestic' : 'overseas';
+        if(onResolve) onResolve({ isCashCurrency: true, currency: opt.currency });
+        closeAutocomplete();
+      });
+    });
+  }
+
   nameInput.addEventListener('input', () => {
     const val = nameInput.value.trim();
     if(engSearchDebounce){ clearTimeout(engSearchDebounce); engSearchDebounce = null; }
@@ -1541,6 +1591,11 @@ function setupStockNameAutocomplete(nameInput, acHolder, groupInput, regionSelec
 
     if(!val || /^[0-9]+$/.test(val)){
       closeAutocomplete();
+      return;
+    }
+
+    if(CASH_CURRENCY_KEYWORDS.some(k => k.includes(val) || val.includes(k))){
+      renderCashCurrencyDropdown();
       return;
     }
 
@@ -1721,7 +1776,7 @@ function setEditMode(mode){
   const qtyInput = document.getElementById('editQty');
   const qtyPreview = document.getElementById('editQtyPreview');
   if(mode === 'qty'){
-    badge.textContent = '주식수';
+    badge.textContent = (editResolvedCode && editResolvedCode.isCashCurrency) ? '현금' : '주식수';
     badge.style.background = '#D4FF3D';
     badge.style.color = '#111';
     badge.style.border = 'none';
@@ -1761,8 +1816,10 @@ function editHolding(accId, holdId){
   document.getElementById('editRegion').value = h.region === 'overseas' ? 'overseas' : 'domestic';
   document.getElementById('editQty').value = h.quantity != null ? h.quantity : '';
   document.getElementById('editModal').style.display = 'flex';
-  const hasCode = h.quantity != null && h.symbol;
-  editResolvedCode = hasCode ? { code: h.symbol, region: h.region, nationName: h.nationName } : null;
+  const isCashQty = isCashHolding(h) && h.quantity != null && h.currency;
+  const hasCode = (h.quantity != null && h.symbol) || isCashQty;
+  editResolvedCode = isCashQty ? { isCashCurrency: true, currency: h.currency }
+    : (h.quantity != null && h.symbol ? { code: h.symbol, region: h.region, nationName: h.nationName } : null);
   document.getElementById('editModeQtyHint').style.display = editResolvedCode ? 'none' : '';
   setEditMode(hasCode ? 'qty' : 'amount');
   updateEditQtyPreview();
@@ -1807,8 +1864,17 @@ async function saveEditModal(){
   const name = document.getElementById('editName').value.trim();
   const group = document.getElementById('editGroup').value.trim();
   const region = document.getElementById('editRegion').value;
-  let amount, quantity = null, symbol = null, yahooSymbol = null, fallbackText = null, nationName = null, lastPrice = null, priceCurrency = null;
-  if(editMode === 'qty'){
+  let amount, quantity = null, symbol = null, yahooSymbol = null, fallbackText = null, nationName = null, lastPrice = null, priceCurrency = null, isCashCurrency = false;
+  if(editMode === 'qty' && editResolvedCode && editResolvedCode.isCashCurrency){
+    quantity = parseFloat(document.getElementById('editQty').value);
+    if(isNaN(quantity)){ alert('금액을 확인해주세요.'); return; }
+    const rate = await fetchFxRate(editResolvedCode.currency);
+    if(rate == null){ alert('환율을 가져오지 못했습니다. 잠시 후 다시 시도해주세요.'); return; }
+    isCashCurrency = true;
+    priceCurrency = editResolvedCode.currency;
+    lastPrice = rate;
+    amount = Math.round(quantity * rate);
+  } else if(editMode === 'qty'){
     if(!editResolvedCode){ alert('종목명 자동완성에서 실제 상장 종목을 선택해주세요.'); return; }
     quantity = parseFloat(document.getElementById('editQty').value);
     if(isNaN(quantity)){ alert('주식수를 확인해주세요.'); return; }
@@ -1827,7 +1893,7 @@ async function saveEditModal(){
     if(!name || isNaN(amount)){ alert('종목명과 평가액을 확인해주세요.'); return; }
   }
   if(isNew){
-    const opts = editMode === 'qty' ? { quantity, symbol, yahooSymbol, fallbackText, nationName, lastPrice, currency: priceCurrency } : null;
+    const opts = editMode === 'qty' ? { quantity, symbol: isCashCurrency ? priceCurrency : symbol, yahooSymbol, fallbackText, nationName, lastPrice, currency: priceCurrency } : null;
     addHolding(acc.id, name, group, amount, region, opts);
     closeEditModal();
     return;
@@ -1842,7 +1908,7 @@ async function saveEditModal(){
     h.group = group || '기타';
     h.region = region;
   }
-  if(editMode === 'qty'){ h.quantity = quantity; h.symbol = symbol; h.yahooSymbol = yahooSymbol; h.fallbackText = fallbackText; h.nationName = nationName; h.lastPrice = lastPrice; h.currency = priceCurrency; }
+  if(editMode === 'qty'){ h.quantity = quantity; h.symbol = isCashCurrency ? priceCurrency : symbol; h.yahooSymbol = yahooSymbol; h.fallbackText = fallbackText; h.nationName = nationName; h.lastPrice = lastPrice; h.currency = priceCurrency; }
   else { delete h.quantity; delete h.symbol; delete h.yahooSymbol; delete h.fallbackText; }
   save();
   closeEditModal();
@@ -2880,7 +2946,7 @@ function holdingsTable(holdings, accId, editable, showRegion, alignMode, mergeDu
       <div style="flex:0 0 140px;text-align:right;padding-right:8px;margin-right:14px;box-sizing:border-box;${cashColor || qtyAmountColor}${sortCursor}" class="num" ${sortable?'data-sortcell="amount"':''}>${h.amount.toLocaleString()}</div>
       <div style="flex:0 0 60px;color:var(--text-dim);text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${sortCursor}" ${sortable?'data-sortcell="group"':''}>${escapeHTML(h.group)}</div>
       <div style="flex:1.4;"></div>
-      ${isQtyMode ? `<div style="flex:0 0 80px;white-space:nowrap;text-align:right;margin-right:14px;cursor:pointer;${showPricePerShare ? (h.region === 'overseas' && h.currency && h.currency !== 'KRW' ? 'color:#C08CFF;' : 'color:#7FDBFF;') : 'color:var(--text-dim);'}" data-qtytoggle="1">${showPricePerShare ? formatPricePerShare(h) : h.quantity.toLocaleString() + '<span style="font-size:10px;">주</span>'}</div>` : (showRegion ? '<div style="flex:0 0 94px;"></div>' : '')}
+      ${isQtyMode ? `<div style="flex:0 0 80px;white-space:nowrap;text-align:right;margin-right:14px;cursor:pointer;${showPricePerShare ? (h.region === 'overseas' && h.currency && h.currency !== 'KRW' ? 'color:#C08CFF;' : 'color:#7FDBFF;') : 'color:var(--text-dim);'}" data-qtytoggle="1">${showPricePerShare ? formatPricePerShare(h) : h.quantity.toLocaleString() + (isCash ? '' : '<span style="font-size:10px;">주</span>')}</div>` : (showRegion ? '<div style="flex:0 0 94px;"></div>' : '')}
       ${showRegion ? `<div style="flex:0 0 44px;color:var(--text-dim);text-align:left;${sortCursor}" ${sortable?'data-sortcell="region"':''}>${h.region==='overseas'?'해외':'국내'}</div>` : ''}
       <div style="flex:0.6;"></div>
       ${editable ? `<div style="flex-shrink:0;text-align:right;"><button class="del" data-edit="${h.id}">수정</button> <button class="del" data-del="${h.id}">삭제</button></div>` : ''}
