@@ -1746,7 +1746,9 @@ async function fetchStockNameByCode(code){
 function addHolding(accId, name, group, amount, region, opts){
   const acc = getAccount(accId);
   let finalName = name, finalGroup = group || '기타', finalRegion = region || 'domestic';
-  if(name === '원화'){
+  if(opts && opts.currency){
+    finalName = '현금'; finalGroup = '현금'; finalRegion = opts.currency === 'KRW' ? 'domestic' : 'overseas';
+  } else if(name === '원화'){
     finalName = '현금'; finalGroup = '현금'; finalRegion = 'domestic';
   } else if(name === '외화'){
     finalName = '현금'; finalGroup = '현금'; finalRegion = 'overseas';
@@ -1828,6 +1830,8 @@ function editHolding(accId, holdId){
   editResolvedCode = isCashQty ? { isCashCurrency: true, currency: h.currency }
     : (h.quantity != null && h.symbol ? { code: h.symbol, region: h.region, nationName: h.nationName } : null);
   document.getElementById('editModeQtyHint').style.display = editResolvedCode ? 'none' : '';
+  const groupInput = document.getElementById('editGroup');
+  if(isCashQty){ groupInput.value = '현금'; groupInput.disabled = true; } else { groupInput.disabled = false; }
   setEditMode(hasCode ? 'qty' : 'amount');
   updateEditQtyPreview();
   document.getElementById('editName').focus();
@@ -1838,6 +1842,7 @@ function openAddHolding(accId){
   document.getElementById('editName').value = '';
   document.getElementById('editAmount').value = '';
   document.getElementById('editGroup').value = '';
+  document.getElementById('editGroup').disabled = false;
   document.getElementById('editRegion').value = 'domestic';
   document.getElementById('editQty').value = '';
   document.getElementById('editModal').style.display = 'flex';
@@ -1918,7 +1923,9 @@ async function saveEditModal(){
     closeEditModal();
     return;
   }
-  if(name === '원화'){
+  if(isCashCurrency){
+    h.name = '현금'; h.amount = amount; h.group = '현금'; h.region = priceCurrency === 'KRW' ? 'domestic' : 'overseas';
+  } else if(name === '원화'){
     h.name = '현금'; h.amount = amount; h.group = '현금'; h.region = 'domestic';
   } else if(name === '외화'){
     h.name = '현금'; h.amount = amount; h.group = '현금'; h.region = 'overseas';
@@ -4253,6 +4260,13 @@ setupStockNameAutocomplete(
     const hint = document.getElementById('editModeQtyHint');
     hint.style.display = resolved ? 'none' : '';
     setEditMode(resolved ? 'qty' : 'amount');
+    const groupInput = document.getElementById('editGroup');
+    if(resolved && resolved.isCashCurrency){
+      groupInput.value = '현금';
+      groupInput.disabled = true;
+    } else {
+      groupInput.disabled = false;
+    }
   }
 );
 
