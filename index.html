@@ -228,13 +228,13 @@
     <h3 id="editModalTitle" style="margin:0 0 16px;font-size:16px;font-weight:700;">종목 수정</h3>
     <div style="display:flex;flex-direction:column;gap:10px;">
       <div style="position:relative;">
-        <input id="editName" placeholder="종목명, 티커, 코드 입력 후 자동완성 목록에서 선택" autocomplete="off" style="width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:14px;font-family:inherit;">
+        <input id="editName" placeholder="종목 키워드 / 티커 / 코드 입력" autocomplete="off" style="width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:14px;font-family:inherit;">
         <div id="editNameAutocomplete" style="position:absolute;top:100%;left:0;right:0;z-index:2000;"></div>
       </div>
       <div style="display:flex;gap:6px;">
         <span id="editModeBadge" style="flex:1;min-width:0;height:36px;display:inline-flex;align-items:center;justify-content:center;padding:0 8px;font-size:14px;font-weight:700;border-radius:6px;color:#888;background:transparent;border:1px solid var(--border);box-sizing:border-box;">평가액</span>
       </div>
-      <div id="editModeQtyHint" style="display:none;font-size:11px;color:var(--text-dim);margin-top:-4px;">종목명 자동완성 목록에서 실제 상장 종목을 선택하면 주식수 입력이 가능해져요.</div>
+      <div id="editModeQtyHint" style="display:none;font-size:11px;color:var(--text-dim);margin-top:-4px;text-align:center;">종목을 자동완성 목록에서 선택하면 주식수로 입력 가능</div>
       <input id="editAmount" type="number" placeholder="평가액" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:14px;font-family:inherit;">
       <input id="editQty" type="number" placeholder="개수(수량)" style="display:none;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:14px;font-family:inherit;">
       <div id="editQtyPreview" style="display:none;font-size:12px;color:var(--text-dim);"></div>
