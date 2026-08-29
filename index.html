@@ -456,11 +456,10 @@ const NAVER_INDEX_MAP = { kospi:'KOSPI', kosdaq:'KOSDAQ' };
 
 let holdingPriceCache = {}; // { yahooSymbol: { price, currency, fetchedAt } }
 function formatPricePerShare(h){
-  if(h.region === 'overseas' && h.yahooSymbol && holdingPriceCache[h.yahooSymbol]){
-    const cached = holdingPriceCache[h.yahooSymbol];
-    const currencyLabel = { USD:'달러', JPY:'엔', EUR:'유로', GBP:'파운드', HKD:'홍콩달러', CNY:'위안' }[cached.currency] || cached.currency;
-    const decimals = (cached.currency === 'JPY') ? 0 : 2;
-    const priceStr = cached.price.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  if(h.region === 'overseas' && h.currency && h.currency !== 'KRW' && h.lastPrice != null){
+    const currencyLabel = { USD:'달러', JPY:'엔', EUR:'유로', GBP:'파운드', HKD:'홍콩달러', CNY:'위안' }[h.currency] || h.currency;
+    const decimals = (h.currency === 'JPY') ? 0 : 2;
+    const priceStr = h.lastPrice.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
     return `${priceStr}<span style="font-size:10px;">${currencyLabel}</span>`;
   }
   return `${Math.round(h.amount / h.quantity).toLocaleString()}<span style="font-size:10px;">원</span>`;
@@ -522,6 +521,8 @@ async function refreshHoldingPrice(h){
     const result = await fetchYahooHoldingPrice(h.yahooSymbol);
     if(result && result.price != null){
       holdingPriceCache[h.yahooSymbol] = { price: result.price, currency: result.currency, fetchedAt: Date.now() };
+      h.lastPrice = result.price;
+      h.currency = result.currency;
       return { symbol: h.yahooSymbol, price: result.price, currency: result.currency, krwPrice: krwPrice(result.price, result.currency) };
     }
   }
@@ -529,6 +530,8 @@ async function refreshHoldingPrice(h){
   if(!resolved) return null;
   holdingPriceCache[resolved.symbol] = { price: resolved.price, currency: resolved.currency, fetchedAt: Date.now() };
   h.yahooSymbol = resolved.symbol; // 다음부터는 이 형태로 바로 조회
+  h.lastPrice = resolved.price;
+  h.currency = resolved.currency;
   return { ...resolved, krwPrice: krwPrice(resolved.price, resolved.currency) };
 }
 
@@ -542,6 +545,8 @@ function syncQuantityHoldingsAmounts(){
         const cached = holdingPriceCache[h.yahooSymbol];
         if(cached && cached.price != null){
           h.amount = Math.round(h.quantity * krwPrice(cached.price, cached.currency));
+          h.lastPrice = cached.price;
+          h.currency = cached.currency;
         }
       }
     });
@@ -1023,6 +1028,8 @@ function normalizeAccounts(accounts){
         if(h.yahooSymbol) holding.yahooSymbol = h.yahooSymbol;
         if(h.fallbackText) holding.fallbackText = h.fallbackText;
         if(h.nationName) holding.nationName = h.nationName;
+        if(h.lastPrice != null) holding.lastPrice = h.lastPrice;
+        if(h.currency) holding.currency = h.currency;
       }
       return holding;
     })
@@ -1677,6 +1684,8 @@ function addHolding(accId, name, group, amount, region, opts){
     if(opts.yahooSymbol) holding.yahooSymbol = opts.yahooSymbol;
     if(opts.fallbackText) holding.fallbackText = opts.fallbackText;
     if(opts.nationName) holding.nationName = opts.nationName;
+    if(opts.lastPrice != null) holding.lastPrice = opts.lastPrice;
+    if(opts.currency) holding.currency = opts.currency;
   }
   acc.holdings.push(holding);
   save(); render();
@@ -1786,7 +1795,7 @@ async function saveEditModal(){
   const name = document.getElementById('editName').value.trim();
   const group = document.getElementById('editGroup').value.trim();
   const region = document.getElementById('editRegion').value;
-  let amount, quantity = null, symbol = null, yahooSymbol = null, fallbackText = null, nationName = null;
+  let amount, quantity = null, symbol = null, yahooSymbol = null, fallbackText = null, nationName = null, lastPrice = null, priceCurrency = null;
   if(editMode === 'qty'){
     if(!editResolvedCode){ alert('종목명 자동완성에서 실제 상장 종목을 선택해주세요.'); return; }
     quantity = parseFloat(document.getElementById('editQty').value);
@@ -1799,12 +1808,14 @@ async function saveEditModal(){
     fallbackText = editResolvedCode.fallbackText;
     nationName = editResolvedCode.nationName;
     amount = Math.round(quantity * result.krwPrice);
+    lastPrice = result.price;
+    priceCurrency = result.currency;
   } else {
     amount = parseFloat(document.getElementById('editAmount').value);
     if(!name || isNaN(amount)){ alert('종목명과 평가액을 확인해주세요.'); return; }
   }
   if(isNew){
-    const opts = editMode === 'qty' ? { quantity, symbol, yahooSymbol, fallbackText, nationName } : null;
+    const opts = editMode === 'qty' ? { quantity, symbol, yahooSymbol, fallbackText, nationName, lastPrice, currency: priceCurrency } : null;
     addHolding(acc.id, name, group, amount, region, opts);
     closeEditModal();
     return;
@@ -1819,7 +1830,7 @@ async function saveEditModal(){
     h.group = group || '기타';
     h.region = region;
   }
-  if(editMode === 'qty'){ h.quantity = quantity; h.symbol = symbol; h.yahooSymbol = yahooSymbol; h.fallbackText = fallbackText; h.nationName = nationName; }
+  if(editMode === 'qty'){ h.quantity = quantity; h.symbol = symbol; h.yahooSymbol = yahooSymbol; h.fallbackText = fallbackText; h.nationName = nationName; h.lastPrice = lastPrice; h.currency = priceCurrency; }
   else { delete h.quantity; delete h.symbol; delete h.yahooSymbol; delete h.fallbackText; }
   save();
   closeEditModal();
@@ -2857,7 +2868,7 @@ function holdingsTable(holdings, accId, editable, showRegion, alignMode, mergeDu
       <div style="flex:0 0 140px;text-align:right;padding-right:8px;margin-right:14px;box-sizing:border-box;${cashColor || qtyAmountColor}${sortCursor}" class="num" ${sortable?'data-sortcell="amount"':''}>${h.amount.toLocaleString()}</div>
       <div style="flex:0 0 70px;color:var(--text-dim);text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${sortCursor}" ${sortable?'data-sortcell="group"':''}>${escapeHTML(h.group)}</div>
       <div style="flex:1.4;"></div>
-      ${isQtyMode ? `<div style="flex:0 0 70px;white-space:nowrap;text-align:right;margin-right:14px;cursor:pointer;${showPricePerShare ? 'color:#4FC3F7;' : 'color:var(--text-dim);'}" data-qtytoggle="1">${showPricePerShare ? formatPricePerShare(h) : h.quantity.toLocaleString() + '주'}</div>` : (showRegion ? '<div style="flex:0 0 84px;"></div>' : '')}
+      ${isQtyMode ? `<div style="flex:0 0 70px;white-space:nowrap;text-align:right;margin-right:14px;cursor:pointer;${showPricePerShare ? 'color:#4FC3F7;' : 'color:var(--text-dim);'}" data-qtytoggle="1">${showPricePerShare ? formatPricePerShare(h) : h.quantity.toLocaleString() + '<span style="font-size:10px;">주</span>'}</div>` : (showRegion ? '<div style="flex:0 0 84px;"></div>' : '')}
       ${showRegion ? `<div style="flex:0 0 44px;color:var(--text-dim);text-align:left;${sortCursor}" ${sortable?'data-sortcell="region"':''}>${h.region==='overseas'?'해외':'국내'}</div>` : ''}
       <div style="flex:0.6;"></div>
       ${editable ? `<div style="flex-shrink:0;text-align:right;"><button class="del" data-edit="${h.id}">수정</button> <button class="del" data-del="${h.id}">삭제</button></div>` : ''}
