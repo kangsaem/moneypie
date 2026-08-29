@@ -1126,7 +1126,7 @@ function exportData(){
 }
 
 function exportXLSX(){
-  const holdingRows = [['계좌명','계좌유형','종목','섹터','지역','평가액','주식수','심볼','국가']];
+  const holdingRows = [['계좌명','계좌유형','종목','섹터','지역','평가액','주식수','심볼','국가','1주가격','통화']];
   state.accounts.forEach(a => {
     a.holdings.forEach(h => {
       const name = isCashHolding(h) ? (h.region === 'overseas' ? '외화' : '원화') : h.name;
@@ -1139,7 +1139,9 @@ function exportXLSX(){
         h.amount,
         h.quantity != null ? h.quantity : '',
         h.symbol || '',
-        h.nationName || ''
+        h.nationName || '',
+        h.lastPrice != null ? h.lastPrice : '',
+        h.currency || ''
       ]);
     });
   });
@@ -1174,7 +1176,7 @@ function exportXLSX(){
     snapshotRows.push([fullMonthLabel(s.label), total, domestic, overseas, creditUsed, s.memo || '']);
   });
 
-  const snapshotDetailRows = [['월','계좌명','계좌유형','종목','섹터','지역','평가액','주식수','심볼','국가']];
+  const snapshotDetailRows = [['월','계좌명','계좌유형','종목','섹터','지역','평가액','주식수','심볼','국가','1주가격','통화']];
   state.snapshots.forEach(s => {
     s.accounts.forEach(a => {
       a.holdings.forEach(h => {
@@ -1189,7 +1191,9 @@ function exportXLSX(){
           h.amount,
           h.quantity != null ? h.quantity : '',
           h.symbol || '',
-          h.nationName || ''
+          h.nationName || '',
+          h.lastPrice != null ? h.lastPrice : '',
+          h.currency || ''
         ]);
       });
     });
@@ -1243,7 +1247,7 @@ function importXLSX(file){
       function toNum(v){
         return typeof v === 'number' && !isNaN(v) ? v : (parseFloat(v) || 0);
       }
-      function rowToHolding(name, group, region, amount, quantity, symbol, nationName){
+      function rowToHolding(name, group, region, amount, quantity, symbol, nationName, lastPrice, currency){
         const isCash = (name === '원화' || name === '외화');
         const holding = {
           id: uid(),
@@ -1256,6 +1260,8 @@ function importXLSX(file){
           holding.quantity = toNum(quantity);
           holding.symbol = String(symbol);
           if(nationName) holding.nationName = String(nationName);
+          if(lastPrice !== '' && lastPrice != null) holding.lastPrice = toNum(lastPrice);
+          if(currency) holding.currency = String(currency);
         }
         return holding;
       }
@@ -1263,13 +1269,13 @@ function importXLSX(file){
         const byAccount = {};
         const order = [];
         rows.forEach(r => {
-          const [accName, accType, holdName, group, region, amount, quantity, symbol, nationName] = r;
+          const [accName, accType, holdName, group, region, amount, quantity, symbol, nationName, lastPrice, currency] = r;
           const key = accName + '||' + accType;
           if(!byAccount[key]){
             byAccount[key] = { id: uid(), name: String(accName || '계좌'), accountType: ACCOUNT_TYPES.includes(accType) ? accType : '직투', holdings: [] };
             order.push(key);
           }
-          byAccount[key].holdings.push(rowToHolding(holdName, group, region, amount, quantity, symbol, nationName));
+          byAccount[key].holdings.push(rowToHolding(holdName, group, region, amount, quantity, symbol, nationName, lastPrice, currency));
         });
         return order.map(k => byAccount[k]);
       }
@@ -1289,9 +1295,9 @@ function importXLSX(file){
       }
 
       sheetRows('월별상세종목').forEach(r => {
-        const [monthLabel, accName, accType, holdName, group, region, amount, quantity, symbol, nationName] = r;
+        const [monthLabel, accName, accType, holdName, group, region, amount, quantity, symbol, nationName, lastPrice, currency] = r;
         const rawLabel = String(monthLabel || '').replace(/-/g, '');
-        ensureMonth(rawLabel).accountRows.push([accName, accType, holdName, group, region, amount, quantity, symbol, nationName]);
+        ensureMonth(rawLabel).accountRows.push([accName, accType, holdName, group, region, amount, quantity, symbol, nationName, lastPrice, currency]);
       });
       sheetRows('월별마통').forEach(r => {
         const [monthLabel, institution, limit, used] = r;
