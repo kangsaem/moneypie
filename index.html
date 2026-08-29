@@ -462,7 +462,7 @@ function formatPricePerShare(h){
     const priceStr = h.lastPrice.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
     return `<span style="font-size:10px;">${currencySymbol}</span>${priceStr}`;
   }
-  return `<span style="font-size:10px;">₩</span>${Math.round(h.amount / h.quantity).toLocaleString()}`;
+  return `${Math.round(h.amount / h.quantity).toLocaleString()}`;
 }
 
 
@@ -2864,7 +2864,7 @@ function holdingsTable(holdings, accId, editable, showRegion, alignMode, mergeDu
     const displayName = isCash ? (h.region === 'overseas' ? '외화' : '원화') : escapeHTML(h.name);
     const cashColor = isCash ? 'color:#F0DA8C;font-weight:700;' : '';
     const isQtyMode = h.quantity != null && h.symbol;
-    const qtyGreen = '#E5FF6B';
+    const qtyGreen = '#D4FF3D';
     const nameColor = isCash ? cashColor : (isQtyMode ? '' : 'color:var(--text-dim);');
     const qtyAmountColor = isQtyMode ? `color:${qtyGreen};` : (isCash ? '' : 'color:var(--text-dim);');
     return `
