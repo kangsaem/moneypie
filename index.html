@@ -485,10 +485,20 @@ async function fetchYahooHoldingPrice(symbol){
 // code(네이버 코드) + region + fallbackText(유저가 원래 검색창에 입력한 원문, 해외종목용)를 받아
 // 야후에서 통할 만한 심볼 형태를 순서대로 시도한다. 성공한 형태는 h.yahooSymbol로 캐시해서
 // 다음부터는 바로 그 형태로만 조회한다.
-async function resolveYahooPrice(code, region, fallbackText){
-  const candidates = region === 'overseas'
-    ? [code, fallbackText].filter(Boolean)
-    : [`${code}.KS`, `${code}.KQ`];
+const NATION_YAHOO_SUFFIX = {
+  '일본': '.T', '홍콩': '.HK', '중국': '.SS', '영국': '.L',
+  '독일': '.DE', '프랑스': '.PA', '캐나다': '.TO', '대만': '.TW',
+  '싱가포르': '.SI', '호주': '.AX', '인도': '.NS'
+};
+async function resolveYahooPrice(code, region, fallbackText, nationName){
+  let candidates;
+  if(region === 'overseas'){
+    const suffix = NATION_YAHOO_SUFFIX[nationName];
+    candidates = suffix ? [`${code}${suffix}`, code, fallbackText] : [code, fallbackText];
+  } else {
+    candidates = [`${code}.KS`, `${code}.KQ`];
+  }
+  candidates = candidates.filter(Boolean);
   for(const sym of candidates){
     const result = await fetchYahooHoldingPrice(sym);
     if(result && result.price != null){
@@ -514,7 +524,7 @@ async function refreshHoldingPrice(h){
       return { symbol: h.yahooSymbol, price: result.price, currency: result.currency, krwPrice: krwPrice(result.price, result.currency) };
     }
   }
-  const resolved = await resolveYahooPrice(h.symbol, h.region, h.fallbackText);
+  const resolved = await resolveYahooPrice(h.symbol, h.region, h.fallbackText, h.nationName);
   if(!resolved) return null;
   holdingPriceCache[resolved.symbol] = { price: resolved.price, currency: resolved.currency, fetchedAt: Date.now() };
   h.yahooSymbol = resolved.symbol; // 다음부터는 이 형태로 바로 조회
@@ -1017,6 +1027,7 @@ function normalizeAccounts(accounts){
         holding.symbol = h.symbol;
         if(h.yahooSymbol) holding.yahooSymbol = h.yahooSymbol;
         if(h.fallbackText) holding.fallbackText = h.fallbackText;
+        if(h.nationName) holding.nationName = h.nationName;
       }
       return holding;
     })
@@ -1500,7 +1511,7 @@ function setupStockNameAutocomplete(nameInput, acHolder, groupInput, regionSelec
         if(it.isLocal && groupInput && it.group) groupInput.value = it.group;
         if(regionSelect && it.region) regionSelect.value = it.region;
         // 종목코드가 있는(=실제 상장된) 항목을 고른 경우에만 개수입력 가능하도록 알려줌
-        if(onResolve) onResolve(it.code ? { code: it.code, region: it.region, isEtf: !!it.isEtf, fallbackText: originalQuery } : null);
+        if(onResolve) onResolve(it.code ? { code: it.code, region: it.region, isEtf: !!it.isEtf, fallbackText: originalQuery, nationName: it.nationName } : null);
         closeAutocomplete();
       });
     });
@@ -1667,6 +1678,7 @@ function addHolding(accId, name, group, amount, region, opts){
     holding.symbol = opts.symbol;
     if(opts.yahooSymbol) holding.yahooSymbol = opts.yahooSymbol;
     if(opts.fallbackText) holding.fallbackText = opts.fallbackText;
+    if(opts.nationName) holding.nationName = opts.nationName;
   }
   acc.holdings.push(holding);
   save(); render();
@@ -1731,7 +1743,7 @@ function editHolding(accId, holdId){
   document.getElementById('editQty').value = h.quantity != null ? h.quantity : '';
   document.getElementById('editModal').style.display = 'flex';
   const hasCode = h.quantity != null && h.symbol;
-  editResolvedCode = hasCode ? { code: h.symbol, region: h.region } : null;
+  editResolvedCode = hasCode ? { code: h.symbol, region: h.region, nationName: h.nationName } : null;
   document.getElementById('editModeQtyHint').style.display = editResolvedCode ? 'none' : '';
   setEditMode(hasCode ? 'qty' : 'amount');
   updateEditQtyPreview();
@@ -1776,24 +1788,25 @@ async function saveEditModal(){
   const name = document.getElementById('editName').value.trim();
   const group = document.getElementById('editGroup').value.trim();
   const region = document.getElementById('editRegion').value;
-  let amount, quantity = null, symbol = null, yahooSymbol = null, fallbackText = null;
+  let amount, quantity = null, symbol = null, yahooSymbol = null, fallbackText = null, nationName = null;
   if(editMode === 'qty'){
     if(!editResolvedCode){ alert('종목명 자동완성에서 실제 상장 종목을 선택해주세요.'); return; }
     quantity = parseFloat(document.getElementById('editQty').value);
     if(isNaN(quantity)){ alert('주식수를 확인해주세요.'); return; }
-    const priceReq = { symbol: editResolvedCode.code, region: editResolvedCode.region, fallbackText: editResolvedCode.fallbackText };
+    const priceReq = { symbol: editResolvedCode.code, region: editResolvedCode.region, fallbackText: editResolvedCode.fallbackText, nationName: editResolvedCode.nationName };
     const result = await refreshHoldingPrice(priceReq);
     if(!result || result.price == null){ alert('가격을 가져오지 못했습니다. 잠시 후 다시 시도해주세요.'); return; }
     symbol = editResolvedCode.code;
     yahooSymbol = priceReq.yahooSymbol || result.symbol;
     fallbackText = editResolvedCode.fallbackText;
+    nationName = editResolvedCode.nationName;
     amount = Math.round(quantity * result.krwPrice);
   } else {
     amount = parseFloat(document.getElementById('editAmount').value);
     if(!name || isNaN(amount)){ alert('종목명과 평가액을 확인해주세요.'); return; }
   }
   if(isNew){
-    const opts = editMode === 'qty' ? { quantity, symbol, yahooSymbol, fallbackText } : null;
+    const opts = editMode === 'qty' ? { quantity, symbol, yahooSymbol, fallbackText, nationName } : null;
     addHolding(acc.id, name, group, amount, region, opts);
     closeEditModal();
     return;
@@ -1808,7 +1821,7 @@ async function saveEditModal(){
     h.group = group || '기타';
     h.region = region;
   }
-  if(editMode === 'qty'){ h.quantity = quantity; h.symbol = symbol; h.yahooSymbol = yahooSymbol; h.fallbackText = fallbackText; }
+  if(editMode === 'qty'){ h.quantity = quantity; h.symbol = symbol; h.yahooSymbol = yahooSymbol; h.fallbackText = fallbackText; h.nationName = nationName; }
   else { delete h.quantity; delete h.symbol; delete h.yahooSymbol; delete h.fallbackText; }
   save();
   closeEditModal();
@@ -4014,7 +4027,7 @@ function renderPanel(){
       </div>
       <div></div>
     </div>
-    <div style="overflow-x:auto;">${holdingsTable(acc.holdings, acc.id, true, true, false, false, accountTableSortMode)}</div>
+    <div id="holdingsTableScroll" style="overflow-x:auto;">${holdingsTable(acc.holdings, acc.id, true, true, false, false, accountTableSortMode)}</div>
     <div class="charts">
       ${(sectorAccordionShowRegionBar = true, '')}
       ${sectorChartBlock(acc.holdings)}
@@ -4039,14 +4052,22 @@ function renderPanel(){
   });
   panel.querySelectorAll('[data-sortcell]').forEach(cell => {
     cell.addEventListener('click', () => {
+      const scrollEl = document.getElementById('holdingsTableScroll');
+      const scrollPos = scrollEl ? scrollEl.scrollLeft : 0;
       accountTableSortMode = cell.dataset.sortcell;
       render();
+      const newScrollEl = document.getElementById('holdingsTableScroll');
+      if(newScrollEl) newScrollEl.scrollLeft = scrollPos;
     });
   });
   panel.querySelectorAll('[data-qtytoggle]').forEach(cell => {
     cell.addEventListener('click', () => {
+      const scrollEl = document.getElementById('holdingsTableScroll');
+      const scrollPos = scrollEl ? scrollEl.scrollLeft : 0;
       showPricePerShare = !showPricePerShare;
       render();
+      const newScrollEl = document.getElementById('holdingsTableScroll');
+      if(newScrollEl) newScrollEl.scrollLeft = scrollPos;
     });
   });
   const stockSortChartAcc = document.getElementById('stock-sortable-chart');
