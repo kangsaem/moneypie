@@ -935,17 +935,26 @@ async function cycleMarketRange(key){
   await setMarketRange(key, nextRange);
 }
 
+const LS_MARKET_REFRESH_KEY = 'asset-tracker:lastMarketRefreshAt';
+const MARKET_REFRESH_COOLDOWN_MS = 5 * 60 * 1000; // 5분
+let lastMarketRefreshAt = 0;
+try { lastMarketRefreshAt = parseInt(localStorage.getItem(LS_MARKET_REFRESH_KEY), 10) || 0; } catch(e){}
+
 async function loadMarketData(forceRefresh){
-  if(!forceRefresh){
+  const withinCooldown = (Date.now() - lastMarketRefreshAt) < MARKET_REFRESH_COOLDOWN_MS;
+  if(!forceRefresh || withinCooldown){
     try{
       const cached = JSON.parse(localStorage.getItem(MARKET_CACHE_KEY) || 'null');
-      if(cached && (Date.now() - cached.timestamp) < MARKET_CACHE_TTL){
+      if(cached && (withinCooldown || (Date.now() - cached.timestamp) < MARKET_CACHE_TTL)){
         marketData = cached.data;
         renderMarketTicker();
         return;
       }
     }catch(e){}
+    if(withinCooldown) return; // 캐시조차 없는 극초반이면 그냥 대기(무리하게 호출 안 함)
   }
+  lastMarketRefreshAt = Date.now();
+  try { localStorage.setItem(LS_MARKET_REFRESH_KEY, String(lastMarketRefreshAt)); } catch(e){}
   const results = await Promise.allSettled(MARKET_SYMBOLS.map(cfg => fetchYahooChart(cfg.symbol, '1d', KOREA_SESSION_KEYS.includes(cfg.key))));
   const dataMap = {};
   const kr = koreanMarketTimesForToday();
