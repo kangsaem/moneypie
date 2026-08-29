@@ -455,9 +455,16 @@ const KR_OVERRIDE_KEYS = [];
 const NAVER_INDEX_MAP = { kospi:'KOSPI', kosdaq:'KOSDAQ' };
 
 let holdingPriceCache = {}; // { yahooSymbol: { price, currency, fetchedAt } }
+const CURRENCY_SYMBOLS = { USD:'$', JPY:'¥', EUR:'€', GBP:'£', HKD:'HK$', CNY:'CN¥' };
 function formatPricePerShare(h){
+  if(isCashHolding(h)){
+    if(h.currency && h.currency !== 'KRW' && h.lastPrice != null){
+      return `${Math.round(h.lastPrice).toLocaleString()}`;
+    }
+    return `${Math.round(h.amount / h.quantity).toLocaleString()}`;
+  }
   if(h.region === 'overseas' && h.currency && h.currency !== 'KRW' && h.lastPrice != null){
-    const currencySymbol = { USD:'$', JPY:'¥', EUR:'€', GBP:'£', HKD:'HK$', CNY:'CN¥' }[h.currency] || h.currency;
+    const currencySymbol = CURRENCY_SYMBOLS[h.currency] || h.currency;
     const decimals = (h.currency === 'JPY') ? 0 : 2;
     const priceStr = h.lastPrice.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
     return `<span style="font-size:10px;">${currencySymbol}</span>${priceStr}`;
@@ -1844,6 +1851,19 @@ async function updateEditQtyPreview(){
   const qty = parseFloat(document.getElementById('editQty').value);
   const previewEl = document.getElementById('editQtyPreview');
   if(!editResolvedCode || isNaN(qty)){ previewEl.textContent = ''; return; }
+  if(editResolvedCode.isCashCurrency){
+    if(editResolvedCode.currency === 'KRW'){
+      previewEl.textContent = `평가액 ${Math.round(qty).toLocaleString()}원`;
+      return;
+    }
+    previewEl.textContent = '환율 조회 중...';
+    const rate = await fetchFxRate(editResolvedCode.currency);
+    if(rate == null){ previewEl.textContent = '환율을 가져오지 못했습니다. 잠시 후 다시 시도해주세요.'; return; }
+    const computed = Math.round(qty * rate);
+    const symbol = CURRENCY_SYMBOLS[editResolvedCode.currency] || '';
+    previewEl.textContent = `현재 환율 1${symbol} = ${Math.round(rate).toLocaleString()}원 → 평가액 약 ${computed.toLocaleString()}원`;
+    return;
+  }
   previewEl.textContent = '가격 조회 중...';
   const result = await refreshHoldingPrice({ symbol: editResolvedCode.code, region: editResolvedCode.region, fallbackText: editResolvedCode.fallbackText });
   if(!result || result.price == null){ previewEl.textContent = '가격을 가져오지 못했습니다.'; return; }
@@ -2885,8 +2905,10 @@ function bilingualNameCompare(a, b){
 }
 
 function sortHoldingsByMode(holdings, mode){
+  const CASH_CURRENCY_ORDER = { USD: 2, EUR: 3, JPY: 4 };
   const cashDom = holdings.filter(h => isCashHolding(h) && (h.region||'domestic') !== 'overseas');
-  const cashOver = holdings.filter(h => isCashHolding(h) && h.region === 'overseas');
+  const cashOver = holdings.filter(h => isCashHolding(h) && h.region === 'overseas')
+    .sort((a,b) => (CASH_CURRENCY_ORDER[a.currency]||1) - (CASH_CURRENCY_ORDER[b.currency]||1));
   const rest = holdings.filter(h => !isCashHolding(h)).slice();
   if(mode === 'name'){
     rest.sort((a,b) => bilingualNameCompare(a.name, b.name));
@@ -2946,7 +2968,7 @@ function holdingsTable(holdings, accId, editable, showRegion, alignMode, mergeDu
       <div style="flex:0 0 140px;text-align:right;padding-right:8px;margin-right:14px;box-sizing:border-box;${cashColor || qtyAmountColor}${sortCursor}" class="num" ${sortable?'data-sortcell="amount"':''}>${h.amount.toLocaleString()}</div>
       <div style="flex:0 0 60px;color:var(--text-dim);text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${sortCursor}" ${sortable?'data-sortcell="group"':''}>${escapeHTML(h.group)}</div>
       <div style="flex:1.4;"></div>
-      ${isQtyMode ? `<div style="flex:0 0 80px;white-space:nowrap;text-align:right;margin-right:14px;cursor:pointer;${showPricePerShare ? (h.region === 'overseas' && h.currency && h.currency !== 'KRW' ? 'color:#C08CFF;' : 'color:#7FDBFF;') : 'color:var(--text-dim);'}" data-qtytoggle="1">${showPricePerShare ? formatPricePerShare(h) : h.quantity.toLocaleString() + (isCash ? '' : '<span style="font-size:10px;">주</span>')}</div>` : (showRegion ? '<div style="flex:0 0 94px;"></div>' : '')}
+      ${isQtyMode ? `<div style="flex:0 0 80px;white-space:nowrap;text-align:right;margin-right:14px;cursor:pointer;${showPricePerShare ? (isCash ? 'color:#FF9800;' : (h.region === 'overseas' && h.currency && h.currency !== 'KRW' ? 'color:#C08CFF;' : 'color:#7FDBFF;')) : 'color:var(--text-dim);'}" data-qtytoggle="1">${showPricePerShare ? formatPricePerShare(h) : (isCash ? (h.currency && CURRENCY_SYMBOLS[h.currency] ? `<span style="font-size:10px;">${CURRENCY_SYMBOLS[h.currency]}</span>` : '') + h.quantity.toLocaleString() : h.quantity.toLocaleString() + '<span style="font-size:10px;">주</span>')}</div>` : (showRegion ? '<div style="flex:0 0 94px;"></div>' : '')}
       ${showRegion ? `<div style="flex:0 0 44px;color:var(--text-dim);text-align:left;${sortCursor}" ${sortable?'data-sortcell="region"':''}>${h.region==='overseas'?'해외':'국내'}</div>` : ''}
       <div style="flex:0.6;"></div>
       ${editable ? `<div style="flex-shrink:0;text-align:right;"><button class="del" data-edit="${h.id}">수정</button> <button class="del" data-del="${h.id}">삭제</button></div>` : ''}
