@@ -3100,15 +3100,18 @@ async function resolveHoldingHistorySymbol(h){
   }
 }
 
-// 종목 아코디언은 클릭한 종목 셀 위에 겹쳐서 뜨도록, 그 셀(행)의 중앙을 기준으로 위치를 잡는다.
-function stockHistoryInitialPosition(triggerEl){
+// 종목 아코디언은 마우스로 클릭했거나 터치한 바로 그 지점에 팝업의 헤더(제목 바)가
+// 오도록 위치를 잡는다. clientX/clientY가 없으면(예: 좌표를 못 받은 경우) 화면 중앙에 띄운다.
+function stockHistoryInitialPosition(clientX, clientY){
   const width = 240;
   const height = 210;
-  const rect = triggerEl ? triggerEl.getBoundingClientRect() : null;
-  const centerX = rect ? rect.left + rect.width/2 : window.innerWidth/2;
-  const centerY = rect ? rect.top + rect.height/2 : window.innerHeight/2;
-  const left = Math.max(8, Math.min(window.innerWidth - width - 8, centerX - width/2));
-  const top = Math.max(8, Math.min(window.innerHeight - height - 8, centerY - height/2));
+  const hasPoint = typeof clientX === 'number' && typeof clientY === 'number';
+  const left = hasPoint
+    ? Math.max(8, Math.min(window.innerWidth - width - 8, clientX - 20))
+    : Math.max(8, (window.innerWidth - width) / 2);
+  const top = hasPoint
+    ? Math.max(8, Math.min(window.innerHeight - height - 8, clientY - 8))
+    : Math.max(8, (window.innerHeight - height) / 2);
   return { left, top, zIndex:null };
 }
 
@@ -3234,7 +3237,7 @@ async function loadStockHistoryGraph(key, token){
   }
 }
 
-function openStockHistoryAccordion(accId, holdId, triggerEl){
+function openStockHistoryAccordion(accId, holdId, triggerEl, clientX, clientY){
   const h = findHoldingById(accId, holdId);
   if(!h) return;
   const isFxAccordionMode = isCashHolding(h) && h.region === 'overseas' && h.currency && h.currency !== 'KRW' && h.quantity != null;
@@ -3248,7 +3251,7 @@ function openStockHistoryAccordion(accId, holdId, triggerEl){
   }
   stockHistoryAccordions[key] = {
     accId, holdId, range:'1d', loadingToken:1,
-    position: stockHistoryInitialPosition(triggerEl)
+    position: stockHistoryInitialPosition(clientX, clientY)
   };
   renderStockHistoryAccordion(key);
   loadStockHistoryGraph(key, 1);
@@ -4495,7 +4498,7 @@ function renderPanel(){
   panel.querySelectorAll('[data-stock-history-name]').forEach(cell => {
     cell.addEventListener('click', (e) => {
       e.stopPropagation();
-      openStockHistoryAccordion(cell.dataset.stockHistoryAcc, cell.dataset.stockHistoryName, cell);
+      openStockHistoryAccordion(cell.dataset.stockHistoryAcc, cell.dataset.stockHistoryName, cell, e.clientX, e.clientY);
     });
   });
   panel.querySelectorAll('[data-qtytoggle]').forEach(cell => {
