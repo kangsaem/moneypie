@@ -654,6 +654,7 @@ async function refreshAllQuantityHoldingPrices(){
   const targets = [];
   state.accounts.forEach(acc => (acc.holdings||[]).forEach(h => { if(h.quantity != null && h.symbol) targets.push(h); }));
   if(targets.length === 0) return;
+  if(typeof resetStockHistoryCache === 'function') resetStockHistoryCache(); // 리로드시 종목 아코디언 그래프 캐시도 초기화
   await Promise.allSettled(targets.map(h => refreshHoldingPrice(h)));
   syncQuantityHoldingsAmounts();
   save();
@@ -3007,6 +3008,21 @@ function mergeHoldingsByKey(holdings){
 
 let stockHistoryAccordions = {};
 
+// 종목 히스토리 그래프(1일/1개월/3개월/6개월/12개월) 캐시. 같은 팝업에서 기간을 오갈 때 재요청하지 않고 재사용한다.
+// key: `${yahooSymbol}|${range}` -> fetchYahooChart 결과
+let stockHistoryChartCache = {};
+// 심볼 조회에 실패한 종목(holdId)을 이번 세션에서 기억해서, 기간 탭을 다시 눌러도 매번 재조회를 시도하지 않게 한다.
+// (예: STX처럼 야후에서 심볼을 못 찾는 국내 종목 - 매 클릭마다 여러 번 재시도하면 응답이 느려지고 팝업이 꼬여 보이는 원인이 됨)
+let stockHistorySymbolFailCache = {};
+// 같은 종목에 대한 심볼 조회가 동시에 여러 번 들어와도 실제 네트워크 조회는 한 번만 실행되도록 하는 락
+let stockHistoryResolvePending = {};
+
+function resetStockHistoryCache(){
+  stockHistoryChartCache = {};
+  stockHistorySymbolFailCache = {};
+  stockHistoryResolvePending = {};
+}
+
 const STOCK_HISTORY_RANGES = [
   { key:'1d', label:'1일' },
   { key:'1mo', label:'1개월' },
@@ -3040,58 +3056,96 @@ async function resolveHoldingHistorySymbol(h){
     return null;
   }
   if(h.yahooSymbol) return h.yahooSymbol;
-  if(h.symbol){
-    const resolved = await resolveYahooPrice(h.symbol, h.region, h.fallbackText, h.nationName);
-    if(resolved && resolved.symbol){
-      h.yahooSymbol = resolved.symbol;
-      h.lastPrice = resolved.price;
-      h.currency = resolved.currency;
-      return resolved.symbol;
-    }
-  }
-  if(h.name){
-    try{
-      const items = await searchNaverAutocomplete(h.name);
-      const exact = items.find(it => it.name === h.name) || items[0];
-      if(exact && exact.code){
-        h.symbol = exact.code;
-        h.region = exact.region || h.region || 'domestic';
-        h.nationName = exact.nationName || h.nationName;
-        const resolved = await resolveYahooPrice(h.symbol, h.region, h.name, h.nationName);
-        if(resolved && resolved.symbol){
-          h.yahooSymbol = resolved.symbol;
-          h.lastPrice = resolved.price;
-          h.currency = resolved.currency;
-          return resolved.symbol;
-        }
+  if(stockHistorySymbolFailCache[h.id]) return null; // 이번 세션에 이미 조회 실패 확인됨 - 재시도하지 않음
+  if(stockHistoryResolvePending[h.id]) return stockHistoryResolvePending[h.id]; // 동시 요청은 하나로 합침
+
+  const resolvePromise = (async () => {
+    let resolvedSymbol = null;
+    if(h.symbol){
+      const resolved = await resolveYahooPrice(h.symbol, h.region, h.fallbackText, h.nationName);
+      if(resolved && resolved.symbol){
+        h.yahooSymbol = resolved.symbol;
+        h.lastPrice = resolved.price;
+        h.currency = resolved.currency;
+        resolvedSymbol = resolved.symbol;
       }
-    }catch(e){}
+    }
+    if(!resolvedSymbol && h.name){
+      try{
+        const items = await searchNaverAutocomplete(h.name);
+        const exact = items.find(it => it.name === h.name) || items[0];
+        if(exact && exact.code){
+          h.symbol = exact.code;
+          h.region = exact.region || h.region || 'domestic';
+          h.nationName = exact.nationName || h.nationName;
+          const resolved = await resolveYahooPrice(h.symbol, h.region, h.name, h.nationName);
+          if(resolved && resolved.symbol){
+            h.yahooSymbol = resolved.symbol;
+            h.lastPrice = resolved.price;
+            h.currency = resolved.currency;
+            resolvedSymbol = resolved.symbol;
+          }
+        }
+      }catch(e){}
+    }
+    if(!resolvedSymbol) stockHistorySymbolFailCache[h.id] = true;
+    return resolvedSymbol;
+  })();
+
+  stockHistoryResolvePending[h.id] = resolvePromise;
+  try{
+    return await resolvePromise;
+  } finally {
+    delete stockHistoryResolvePending[h.id];
   }
-  return null;
 }
 
+// 종목 아코디언은 종목목록(보유종목 테이블) 위에 겹쳐서 뜨도록, 트리거 위치가 아니라
+// 목록 영역 중앙을 기준으로 위치를 잡는다.
 function stockHistoryInitialPosition(triggerEl){
-  if(!triggerEl) return null;
-  const r = triggerEl.getBoundingClientRect();
   const width = 240;
-  const left = Math.max(8, Math.min(window.innerWidth - width - 8, r.left + r.width/2 - width/2));
-  const top = Math.max(8, Math.min(window.innerHeight - 210, r.bottom + 4));
+  const listEl = document.getElementById('holdingsTableScroll');
+  const rect = listEl ? listEl.getBoundingClientRect() : (triggerEl ? triggerEl.getBoundingClientRect() : null);
+  const centerX = rect ? rect.left + rect.width/2 : window.innerWidth/2;
+  const centerY = rect ? Math.max(rect.top, 0) + Math.min(rect.height, window.innerHeight) / 2 : window.innerHeight/2;
+  const left = Math.max(8, Math.min(window.innerWidth - width - 8, centerX - width/2));
+  const top = Math.max(8, Math.min(window.innerHeight - 210, centerY - 100));
   return { left, top, zIndex:null };
 }
 
+function updateStockHistoryRangeButtonsUI(key){
+  const info = stockHistoryAccordions[key];
+  if(!info) return;
+  document.querySelectorAll(`#stock-history-slot-${CSS.escape(key)} [data-stock-history-range]`).forEach(btn => {
+    const active = btn.dataset.stockHistoryRange === info.range;
+    btn.style.background = active ? '#C9C9C9' : '#EDEDED';
+    btn.style.fontWeight = active ? '700' : '500';
+  });
+}
+
+// 기존에는 기간 탭을 누를 때마다 팝업 전체(innerHTML)를 다시 그려서, 방금 클릭한 버튼이
+// 이벤트 처리 도중 DOM에서 통째로 교체되었다. PC 크롬 환경에서 이 시점에 팝업이 중복으로
+// 남는 문제가 있었기 때문에, 팝업은 "처음 열 때 한 번만" 생성하고 그 안의 클릭은 이벤트
+// 위임(delegation)으로 한 번만 바인딩한다. 기간을 바꿀 때는 버튼 활성 표시와 그래프 영역만
+// 갱신하고 팝업 DOM 자체는 다시 만들지 않는다.
 function renderStockHistoryAccordion(key){
   const info = stockHistoryAccordions[key];
   if(!info) return;
   const h = findHoldingById(info.accId, info.holdId);
   if(!h) return;
 
-  let slot = document.getElementById(`stock-history-slot-${CSS.escape(key)}`);
-  if(!slot){
-    slot = document.createElement('div');
-    slot.id = `stock-history-slot-${key}`;
-    slot.dataset.stockHistorySlot = key;
-    document.body.appendChild(slot);
+  let slot = document.getElementById(`stock-history-slot-${key}`);
+  if(slot){
+    // 이미 열려 있는 팝업: DOM을 재생성하지 않고 활성 탭 표시만 갱신
+    updateStockHistoryRangeButtonsUI(key);
+    if(info.position) applyAccordionPos(`#stock-history-slot-${CSS.escape(key)} .floating-acc`, info.position);
+    return;
   }
+
+  slot = document.createElement('div');
+  slot.id = `stock-history-slot-${key}`;
+  slot.dataset.stockHistorySlot = key;
+  document.body.appendChild(slot);
 
   const title = (isCashHolding(h) && h.currency && h.currency !== 'KRW') ? `${h.currency} 환율` : (h.name || '종목');
   slot.innerHTML = `<div class="floating-acc" style="background:#EDEDED;color:#333333;border-radius:6px;text-align:left;box-sizing:border-box;width:240px;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:${++accordionZIndexCounter};box-shadow:0 4px 12px rgba(0,0,0,0.4);cursor:grab;overflow:hidden;">
@@ -3112,21 +3166,24 @@ function renderStockHistoryAccordion(key){
   makeAccordionDraggable(accEl);
   if(info.position) applyAccordionPos(`#stock-history-slot-${CSS.escape(key)} .floating-acc`, info.position);
 
-  const closeBtn = slot.querySelector('[data-stock-history-close]');
-  if(closeBtn) closeBtn.addEventListener('click', () => closeStockHistoryAccordion(key));
-
-  slot.querySelectorAll('[data-stock-history-range]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const nextRange = btn.dataset.stockHistoryRange;
-      const current = stockHistoryAccordions[key];
-      if(!current) return;
-      const pos = captureAccordionPos(`#stock-history-slot-${CSS.escape(key)} .floating-acc`);
-      current.range = nextRange;
-      current.loadingToken++;
-      current.position = pos || current.position;
-      renderStockHistoryAccordion(key);
-      await loadStockHistoryGraph(key, current.loadingToken);
-    });
+  // 팝업 컨테이너(slot)에 클릭을 한 번만 위임 바인딩한다. 기간을 바꿔도 slot 자체는
+  // 재생성되지 않으므로 이 리스너는 팝업이 열려 있는 동안 단 하나만 존재한다.
+  slot.addEventListener('click', async (e) => {
+    if(e.target.closest('[data-stock-history-close]')){
+      closeStockHistoryAccordion(key);
+      return;
+    }
+    const rangeBtn = e.target.closest('[data-stock-history-range]');
+    if(!rangeBtn) return;
+    const nextRange = rangeBtn.dataset.stockHistoryRange;
+    const current = stockHistoryAccordions[key];
+    if(!current || current.range === nextRange) return; // 같은 기간 재클릭은 무시
+    current.range = nextRange;
+    current.loadingToken++;
+    updateStockHistoryRangeButtonsUI(key);
+    const chartEl = document.getElementById(`stock-history-chart-${key}`);
+    if(chartEl) chartEl.innerHTML = '<div style="font-size:11px;color:#777777;">그래프 불러오는 중...</div>';
+    await loadStockHistoryGraph(key, current.loadingToken);
   });
 }
 
@@ -3139,13 +3196,19 @@ async function loadStockHistoryGraph(key, token){
   if(!h) return;
 
   const symbol = await resolveHoldingHistorySymbol(h);
+  if(token !== info.loadingToken) return; // 조회하는 동안 다른 기간으로 전환됨
   if(!symbol){
-    if(token === info.loadingToken && chartEl) chartEl.innerHTML = '<div style="font-size:11px;color:#777777;text-align:center;">시세 그래프를 불러올 수 없습니다.</div>';
+    if(chartEl) chartEl.innerHTML = '<div style="font-size:11px;color:#777777;text-align:center;">시세 그래프를 불러올 수 없습니다.</div>';
     return;
   }
+  const cacheKey = `${symbol}|${info.range}`;
   try{
-    const data = await fetchYahooChart(symbol, info.range, info.range === '1d');
-    if(token !== info.loadingToken) return;
+    let data = stockHistoryChartCache[cacheKey];
+    if(!data){
+      data = await fetchYahooChart(symbol, info.range, info.range === '1d');
+      if(token !== info.loadingToken) return;
+      stockHistoryChartCache[cacheKey] = data;
+    }
     let svg = '';
     if(info.range === '1d'){
       svg = sparklineIntradaySVG(data.intradayPoints || [], data.marketOpen, data.marketClose, 216, 94, data.prevClose, true);
@@ -3167,6 +3230,7 @@ async function loadStockHistoryGraph(key, token){
         ${svg}
       </div>`;
   }catch(e){
+    delete stockHistoryChartCache[cacheKey];
     if(token === info.loadingToken && chartEl) chartEl.innerHTML = '<div style="font-size:11px;color:#777777;text-align:center;">그래프를 불러오지 못했습니다.</div>';
   }
 }
@@ -3192,7 +3256,7 @@ function openStockHistoryAccordion(accId, holdId, triggerEl){
 }
 
 function closeStockHistoryAccordion(key){
-  const slot = document.getElementById(`stock-history-slot-${CSS.escape(key)}`);
+  const slot = document.getElementById(`stock-history-slot-${key}`);
   if(slot) slot.remove();
   delete stockHistoryAccordions[key];
 }
