@@ -2284,8 +2284,8 @@ function applyAccordionPos(selector, pos){
   const el = document.querySelector(selector);
   if(!el) return;
   el.style.position = 'fixed';
-  el.style.left = pos.left;
-  el.style.top = pos.top;
+  el.style.left = (typeof pos.left === 'number' ? pos.left + 'px' : pos.left);
+  el.style.top = (typeof pos.top === 'number' ? pos.top + 'px' : pos.top);
   el.style.transform = 'none';
   el.style.margin = '0';
   if(pos.zIndex) el.style.zIndex = pos.zIndex;
@@ -3169,8 +3169,8 @@ function renderStockHistoryAccordion(key){
   </div>`;
 
   const accEl = slot.querySelector('.floating-acc');
-  makeAccordionDraggable(accEl);
   if(info.position) applyAccordionPos(`#stock-history-slot-${CSS.escape(key)} .floating-acc`, info.position);
+  makeAccordionDraggable(accEl);
 
   // 팝업 컨테이너(slot)에 클릭을 한 번만 위임 바인딩한다. 기간을 바꿔도 slot 자체는
   // 재생성되지 않으므로 이 리스너는 팝업이 열려 있는 동안 단 하나만 존재한다.
