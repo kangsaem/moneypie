@@ -3100,16 +3100,15 @@ async function resolveHoldingHistorySymbol(h){
   }
 }
 
-// 종목 아코디언은 종목목록(보유종목 테이블) 위에 겹쳐서 뜨도록, 트리거 위치가 아니라
-// 목록 영역 중앙을 기준으로 위치를 잡는다.
+// 종목 아코디언은 클릭한 종목 셀 위에 겹쳐서 뜨도록, 그 셀(행)의 중앙을 기준으로 위치를 잡는다.
 function stockHistoryInitialPosition(triggerEl){
   const width = 240;
-  const listEl = document.getElementById('holdingsTableScroll');
-  const rect = listEl ? listEl.getBoundingClientRect() : (triggerEl ? triggerEl.getBoundingClientRect() : null);
+  const height = 210;
+  const rect = triggerEl ? triggerEl.getBoundingClientRect() : null;
   const centerX = rect ? rect.left + rect.width/2 : window.innerWidth/2;
-  const centerY = rect ? Math.max(rect.top, 0) + Math.min(rect.height, window.innerHeight) / 2 : window.innerHeight/2;
+  const centerY = rect ? rect.top + rect.height/2 : window.innerHeight/2;
   const left = Math.max(8, Math.min(window.innerWidth - width - 8, centerX - width/2));
-  const top = Math.max(8, Math.min(window.innerHeight - 210, centerY - 100));
+  const top = Math.max(8, Math.min(window.innerHeight - height - 8, centerY - height/2));
   return { left, top, zIndex:null };
 }
 
