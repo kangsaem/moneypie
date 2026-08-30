@@ -3011,9 +3011,11 @@ let stockHistoryAccordions = {};
 // 종목 히스토리 그래프(1일/1개월/3개월/6개월/12개월) 캐시. 같은 팝업에서 기간을 오갈 때 재요청하지 않고 재사용한다.
 // key: `${yahooSymbol}|${range}` -> fetchYahooChart 결과
 let stockHistoryChartCache = {};
-// 심볼 조회에 실패한 종목(holdId)을 이번 세션에서 기억해서, 기간 탭을 다시 눌러도 매번 재조회를 시도하지 않게 한다.
+// 심볼 조회에 실패한 종목(holdId)을 잠깐 동안 기억해서, 기간 탭을 연타해도 매번 재조회를 시도하지
+// 않게 한다. 다만 네트워크 일시 오류로 계속 막히는 걸 막기 위해 "영구 차단"이 아니라 짧은 쿨다운만 둔다.
 // (예: STX처럼 야후에서 심볼을 못 찾는 국내 종목 - 매 클릭마다 여러 번 재시도하면 응답이 느려지고 팝업이 꼬여 보이는 원인이 됨)
-let stockHistorySymbolFailCache = {};
+let stockHistorySymbolFailCache = {}; // holdId -> 실패한 시각(ms)
+const STOCK_HISTORY_FAIL_COOLDOWN_MS = 20 * 1000; // 20초 동안만 재시도를 쉬고, 이후엔 다시 시도 허용
 // 같은 종목에 대한 심볼 조회가 동시에 여러 번 들어와도 실제 네트워크 조회는 한 번만 실행되도록 하는 락
 let stockHistoryResolvePending = {};
 
@@ -3056,7 +3058,8 @@ async function resolveHoldingHistorySymbol(h){
     return null;
   }
   if(h.yahooSymbol) return h.yahooSymbol;
-  if(stockHistorySymbolFailCache[h.id]) return null; // 이번 세션에 이미 조회 실패 확인됨 - 재시도하지 않음
+  const failedAt = stockHistorySymbolFailCache[h.id];
+  if(failedAt && (Date.now() - failedAt) < STOCK_HISTORY_FAIL_COOLDOWN_MS) return null; // 최근에 실패함 - 잠깐 재시도 쉼
   if(stockHistoryResolvePending[h.id]) return stockHistoryResolvePending[h.id]; // 동시 요청은 하나로 합침
 
   const resolvePromise = (async () => {
@@ -3088,7 +3091,7 @@ async function resolveHoldingHistorySymbol(h){
         }
       }catch(e){}
     }
-    if(!resolvedSymbol) stockHistorySymbolFailCache[h.id] = true;
+    if(!resolvedSymbol) stockHistorySymbolFailCache[h.id] = Date.now();
     return resolvedSymbol;
   })();
 
