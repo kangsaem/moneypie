@@ -3105,16 +3105,17 @@ async function resolveHoldingHistorySymbol(h){
 
 // 종목 아코디언은 마우스로 클릭했거나 터치한 바로 그 지점에 팝업의 헤더(제목 바)가
 // 오도록 위치를 잡는다. clientX/clientY가 없으면(예: 좌표를 못 받은 경우) 화면 중앙에 띄운다.
-function stockHistoryInitialPosition(clientX, clientY){
+function stockHistoryInitialPosition(triggerEl){
   const width = 240;
   const height = 210;
-  const hasPoint = typeof clientX === 'number' && typeof clientY === 'number';
-  const left = hasPoint
-    ? Math.max(8, Math.min(window.innerWidth - width - 8, clientX - 20))
-    : Math.max(8, (window.innerWidth - width) / 2);
-  const top = hasPoint
-    ? Math.max(8, Math.min(window.innerHeight - height - 8, clientY - 8))
-    : Math.max(8, (window.innerHeight - height) / 2);
+  if(triggerEl){
+    const rect = triggerEl.getBoundingClientRect();
+    const left = Math.max(8, Math.min(window.innerWidth - width - 8, rect.left));
+    const top = Math.max(8, Math.min(window.innerHeight - height - 8, rect.bottom + 4));
+    return { left, top, zIndex:null };
+  }
+  const left = Math.max(8, (window.innerWidth - width) / 2);
+  const top = Math.max(8, (window.innerHeight - height) / 2);
   return { left, top, zIndex:null };
 }
 
@@ -3240,7 +3241,7 @@ async function loadStockHistoryGraph(key, token){
   }
 }
 
-function openStockHistoryAccordion(accId, holdId, triggerEl, clientX, clientY){
+function openStockHistoryAccordion(accId, holdId, triggerEl){
   const h = findHoldingById(accId, holdId);
   if(!h) return;
   const isFxAccordionMode = isCashHolding(h) && h.region === 'overseas' && h.currency && h.currency !== 'KRW' && h.quantity != null;
@@ -3254,7 +3255,7 @@ function openStockHistoryAccordion(accId, holdId, triggerEl, clientX, clientY){
   }
   stockHistoryAccordions[key] = {
     accId, holdId, range:'1d', loadingToken:1,
-    position: stockHistoryInitialPosition(clientX, clientY)
+    position: stockHistoryInitialPosition(triggerEl)
   };
   renderStockHistoryAccordion(key);
   loadStockHistoryGraph(key, 1);
@@ -4501,7 +4502,7 @@ function renderPanel(){
   panel.querySelectorAll('[data-stock-history-name]').forEach(cell => {
     cell.addEventListener('click', (e) => {
       e.stopPropagation();
-      openStockHistoryAccordion(cell.dataset.stockHistoryAcc, cell.dataset.stockHistoryName, cell, e.clientX, e.clientY);
+      openStockHistoryAccordion(cell.dataset.stockHistoryAcc, cell.dataset.stockHistoryName, cell);
     });
   });
   panel.querySelectorAll('[data-qtytoggle]').forEach(cell => {
