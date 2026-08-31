@@ -228,18 +228,18 @@
     <h3 id="editModalTitle" style="margin:0 0 16px;font-size:16px;font-weight:700;">종목 수정</h3>
     <div style="display:flex;flex-direction:column;gap:10px;">
       <div style="position:relative;">
-        <input id="editName" placeholder="종목 키워드 / 티커 / 코드 입력" autocomplete="off" style="width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:14px;font-family:inherit;">
+        <input id="editName" placeholder="종목 키워드 / 티커 / 코드 입력" autocomplete="off" style="width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:16px;font-family:inherit;">
         <div id="editNameAutocomplete" style="position:absolute;top:100%;left:0;right:0;z-index:2000;"></div>
       </div>
       <div style="display:flex;gap:6px;">
         <span id="editModeBadge" style="flex:1;min-width:0;height:36px;display:inline-flex;align-items:center;justify-content:center;padding:0 8px;font-size:14px;font-weight:700;border-radius:6px;color:#888;background:transparent;border:1px solid var(--border);box-sizing:border-box;">평가액</span>
       </div>
       <div id="editModeQtyHint" style="display:none;font-size:11px;color:var(--text-dim);margin-top:-4px;text-align:center;">종목을 자동완성 목록에서 선택하면 주식수로 입력 가능</div>
-      <input id="editAmount" type="number" placeholder="평가액" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:14px;font-family:inherit;">
-      <input id="editQty" type="number" placeholder="개수(수량)" style="display:none;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:14px;font-family:inherit;">
+      <input id="editAmount" type="number" placeholder="평가액" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:16px;font-family:inherit;">
+      <input id="editQty" type="number" placeholder="개수(수량)" style="display:none;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:16px;font-family:inherit;">
       <div id="editQtyPreview" style="display:none;font-size:12px;color:var(--text-dim);"></div>
-      <input id="editGroup" placeholder="섹터" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:14px;font-family:inherit;">
-      <select id="editRegion" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:14px;font-family:inherit;">
+      <input id="editGroup" placeholder="섹터" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:16px;font-family:inherit;">
+      <select id="editRegion" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:16px;font-family:inherit;">
         <option value="domestic">국내</option>
         <option value="overseas">해외</option>
       </select>
@@ -305,24 +305,11 @@
 </div>
 
 <!-- 사용 매뉴얼 모달 (이미지 가이드) -->
-<div id="manualModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:3100;align-items:center;justify-content:center;padding:12px;">
-  <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:16px 16px 20px;width:min(420px,96vw);max-height:92vh;display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,0.45);">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-      <h3 style="margin:0;font-size:16px;font-weight:700;">머니파이 사용 매뉴얼</h3>
-      <span id="manualStepLabel" style="font-size:13px;color:var(--text-dim);font-weight:600;">1 / 4</span>
-    </div>
-    <div style="flex:1;overflow:auto;border-radius:8px;background:#111;min-height:200px;display:flex;align-items:center;justify-content:center;">
-      <img id="manualImage" src="0001.png" alt="매뉴얼" style="max-width:100%;max-height:min(58vh,520px);width:auto;height:auto;display:block;border-radius:6px;">
-    </div>
-    <div id="manualCaption" style="font-size:12px;color:var(--text-dim);line-height:1.45;margin:10px 0 12px;min-height:2.8em;"></div>
-    <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-dim);cursor:pointer;margin-bottom:12px;">
-      <input type="checkbox" id="manualDontShowAgain">
-      다음에 보이지 않기
-    </label>
-    <div style="display:flex;gap:8px;justify-content:space-between;">
-      <button class="btn" id="manualPrevBtn" style="min-width:72px;">이전</button>
-      <button class="btn btn-primary" id="manualNextBtn" style="min-width:100px;">다음</button>
-    </div>
+<!-- 사용 매뉴얼 (테두리 없이 PNG 순서 표시) -->
+<div id="manualModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:3100;align-items:center;justify-content:center;padding:12px;cursor:pointer;">
+  <div style="position:relative;max-width:min(420px,96vw);text-align:center;">
+    <img id="manualImage" src="0001.png" alt="매뉴얼" style="max-width:100%;max-height:min(80vh,620px);width:auto;height:auto;display:block;border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,0.45);margin:0 auto;">
+    <div id="manualStepLabel" style="margin-top:12px;font-size:13px;color:var(--text-dim);font-weight:600;">1 / 4 · 화면을 터치하면 다음으로</div>
   </div>
 </div>
 
@@ -3031,6 +3018,36 @@ function resetStockHistoryCache(){
   stockHistoryChartCache = {};
   stockHistorySymbolFailCache = {};
   stockHistoryResolvePending = {};
+  stockHistoryBatchFetchPending = {};
+}
+
+// 심볼 하나에 대해 1일/1개월/3개월/6개월/12개월 차트를 한 번에 요청해서 캐시에 저장한다.
+// 기간 탭을 누를 때마다 그때그때 개별 요청하면 요청 시점마다(=현재가 조회 시점마다) 현재가가
+// 서로 다르게 잡혀 기간별로 가격이 들쭉날쭉해 보이는 문제가 있었다. 그래서 특정 기간이 캐시에
+// 없으면(최초 조회든, 리로드로 캐시가 비워진 뒤 재조회든) 그 기간 하나만 받아오지 않고 5개
+// 기간을 동시에 받아와 같은 시점의 데이터로 캐시를 채운다. 같은 심볼에 대해 동시에 여러 번
+// 호출돼도 실제 네트워크 요청은 한 번만 나가도록 pending Promise를 공유한다.
+let stockHistoryBatchFetchPending = {}; // symbol -> Promise
+
+async function fetchAllStockHistoryRanges(symbol){
+  if(stockHistoryBatchFetchPending[symbol]) return stockHistoryBatchFetchPending[symbol];
+  const promise = (async () => {
+    const results = await Promise.allSettled(
+      STOCK_HISTORY_RANGES.map(r => fetchYahooChart(symbol, r.key, r.key === '1d'))
+    );
+    results.forEach((result, idx) => {
+      const rangeKey = STOCK_HISTORY_RANGES[idx].key;
+      if(result.status === 'fulfilled' && result.value){
+        stockHistoryChartCache[`${symbol}|${rangeKey}`] = result.value;
+      }
+    });
+  })();
+  stockHistoryBatchFetchPending[symbol] = promise;
+  try{
+    await promise;
+  } finally {
+    delete stockHistoryBatchFetchPending[symbol];
+  }
 }
 
 const STOCK_HISTORY_RANGES = [
@@ -3219,6 +3236,14 @@ async function loadStockHistoryGraph(key, token){
   try{
     let data = stockHistoryChartCache[cacheKey];
     if(!data){
+      // 이 기간이 캐시에 없으면(최초 조회 또는 리로드 후 첫 조회) 5개 기간을 한 번에 받아와
+      // 같은 시점의 현재가로 캐시를 채운다.
+      await fetchAllStockHistoryRanges(symbol);
+      if(token !== info.loadingToken) return;
+      data = stockHistoryChartCache[cacheKey];
+    }
+    if(!data){
+      // 일괄 조회에서 이 기간만 실패했다면 개별로 한 번 더 시도한다.
       data = await fetchYahooChart(symbol, info.range, info.range === '1d');
       if(token !== info.loadingToken) return;
       stockHistoryChartCache[cacheKey] = data;
@@ -4877,18 +4902,18 @@ function checkNoticeHtml(){
 }
 
 (async function(){
-  // notice.png → notice.html 순서로 표시 후, 종목추가 가이드(in001~003) → FAQ/매뉴얼
+  // notice.png → notice.html → FAQ → 종목추가 가이드(in001~003, 매번 표시) → 매뉴얼
   await checkNoticePng();
   await checkNoticeHtml();
 
   // ===== 종목추가 가이드 (in001 → in002 → in003) =====
-  // notice 이후, 클릭/터치로 순서대로 표시. 이후 기존 모달 매뉴얼 유지
-  const INTRO_GUIDE_KEY = 'moneypie_intro_guide_dismissed';
+  // FAQ 다음에 표시. 클릭/터치로 순서 전환. 매번 다시 나옴 (저장 안 함)
   const introModal = document.getElementById('introGuideModal');
   const introImg = document.getElementById('introGuideImage');
   const introStepLabel = document.getElementById('introGuideStepLabel');
   const introSteps = ['in001.png', 'in002.png', 'in003.png'];
   let introIdx = 0;
+  let introListenersBound = false;
 
   function updateIntroUI(){
     if(introImg) introImg.src = introSteps[introIdx];
@@ -4899,10 +4924,9 @@ function checkNoticeHtml(){
   }
 
   function closeIntroGuide(){
-    try { localStorage.setItem(INTRO_GUIDE_KEY, '1'); } catch(e){}
     if(introModal) introModal.style.display = 'none';
-    // 가이드 종료 후 기존 FAQ/매뉴얼 흐름으로
-    startWelcomeAndManual();
+    // 가이드 종료 후 매뉴얼
+    showManualIfNeeded();
   }
 
   function advanceIntroGuide(){
@@ -4914,16 +4938,20 @@ function checkNoticeHtml(){
     }
   }
 
-  function showIntroGuideIfNeeded(){
-    let introDismissed = false;
-    try { introDismissed = localStorage.getItem(INTRO_GUIDE_KEY) === '1'; } catch(e){}
-    if(!introDismissed && introModal){
-      introIdx = 0;
-      updateIntroUI();
-      introModal.style.display = 'flex';
-      // 클릭 또는 터치로 다음 이미지 / 닫기 (터치 후 합성 click 방지)
+  function showIntroGuide(){
+    if(!introModal){
+      showManualIfNeeded();
+      return;
+    }
+    introIdx = 0;
+    updateIntroUI();
+    introModal.style.display = 'flex';
+    // 리스너는 한 번만 등록
+    if(!introListenersBound){
+      introListenersBound = true;
       let lastAdvance = 0;
       const onAdvance = (e) => {
+        if(introModal.style.display === 'none') return;
         const now = Date.now();
         if(now - lastAdvance < 400) return;
         lastAdvance = now;
@@ -4933,85 +4961,65 @@ function checkNoticeHtml(){
       };
       introModal.addEventListener('click', onAdvance);
       introModal.addEventListener('touchend', onAdvance, { passive: false });
-    } else {
-      startWelcomeAndManual();
     }
   }
 
-  // ===== 사용 매뉴얼 (이미지 가이드) =====
+  // ===== 사용 매뉴얼 (테두리 없이 PNG 순서 표시) =====
   const MANUAL_KEY = 'moneypie_manual_dismissed';
   const manualModal = document.getElementById('manualModal');
   const manualImg = document.getElementById('manualImage');
   const manualStepLabel = document.getElementById('manualStepLabel');
-  const manualCaption = document.getElementById('manualCaption');
-  const manualPrevBtn = document.getElementById('manualPrevBtn');
-  const manualNextBtn = document.getElementById('manualNextBtn');
-  const manualDontShowChk = document.getElementById('manualDontShowAgain');
-
-  const manualSteps = [
-    {
-      src: '0001.png',
-      caption: '종목명과 평가액을 입력하고, 계좌명·유형을 수정할 수 있습니다.'
-    },
-    {
-      src: '0002.png',
-      caption: '계좌유형별 비중과 국내/해외 비중, 섹터 내 종목 비중을 확인할 수 있습니다.'
-    },
-    {
-      src: '0003.png',
-      caption: '경제지표를 클릭해 조회 기간을 바꿀 수 있고, 월별 메모와 마통 사용액을 표시합니다'
-    },
-    {
-      src: '0004.png',
-      caption: '엑셀 보내기로 데이터를 내보낼 수 있고, 월별 자산·섹터·국내/해외 비중 변화를 그래프로 볼 수 있습니다.'
-    }
-  ];
+  const manualSteps = ['0001.png', '0004.png'];
   let manualIdx = 0;
+  let manualListenersBound = false;
 
   function updateManualUI(){
-    const step = manualSteps[manualIdx];
-    if(manualImg) manualImg.src = step.src;
-    if(manualStepLabel) manualStepLabel.textContent = (manualIdx + 1) + ' / ' + manualSteps.length;
-    if(manualCaption) manualCaption.textContent = step.caption;
-    if(manualPrevBtn) manualPrevBtn.style.visibility = manualIdx === 0 ? 'hidden' : 'visible';
-    if(manualNextBtn) manualNextBtn.textContent = manualIdx === manualSteps.length - 1 ? '완료' : '다음';
+    if(manualImg) manualImg.src = manualSteps[manualIdx];
+    if(manualStepLabel){
+      const isLast = manualIdx >= manualSteps.length - 1;
+      manualStepLabel.textContent = (manualIdx + 1) + ' / ' + manualSteps.length + (isLast ? ' · 터치하면 닫기' : ' · 화면을 터치하면 다음으로');
+    }
   }
 
   function closeManualModal(){
-    if(manualDontShowChk && manualDontShowChk.checked){
-      try { localStorage.setItem(MANUAL_KEY, '1'); } catch(e){}
-    }
+    try { localStorage.setItem(MANUAL_KEY, '1'); } catch(e){}
     if(manualModal) manualModal.style.display = 'none';
   }
 
-  function showManualIfNeeded(){
-    let manualDismissed = false;
-    try { manualDismissed = localStorage.getItem(MANUAL_KEY) === '1'; } catch(e){}
-    if(!manualDismissed && manualModal){
-      updateManualUI();
-      manualModal.style.display = 'flex';
-    }
-  }
-
-  if(manualPrevBtn) manualPrevBtn.addEventListener('click', () => {
-    if(manualIdx > 0){
-      manualIdx--;
-      updateManualUI();
-    }
-  });
-  if(manualNextBtn) manualNextBtn.addEventListener('click', () => {
+  function advanceManual(){
     if(manualIdx < manualSteps.length - 1){
       manualIdx++;
       updateManualUI();
     } else {
       closeManualModal();
     }
-  });
-  if(manualModal) manualModal.addEventListener('click', (e) => {
-    if(e.target.id === 'manualModal') closeManualModal();
-  });
+  }
 
-  // ===== FAQ 환영 모달 (먼저 표시) =====
+  function showManualIfNeeded(){
+    let manualDismissed = false;
+    try { manualDismissed = localStorage.getItem(MANUAL_KEY) === '1'; } catch(e){}
+    if(manualDismissed || !manualModal) return;
+    manualIdx = 0;
+    updateManualUI();
+    manualModal.style.display = 'flex';
+    if(!manualListenersBound){
+      manualListenersBound = true;
+      let lastAdvance = 0;
+      const onAdvance = (e) => {
+        if(manualModal.style.display === 'none') return;
+        const now = Date.now();
+        if(now - lastAdvance < 400) return;
+        lastAdvance = now;
+        e.preventDefault();
+        e.stopPropagation();
+        advanceManual();
+      };
+      manualModal.addEventListener('click', onAdvance);
+      manualModal.addEventListener('touchend', onAdvance, { passive: false });
+    }
+  }
+
+  // ===== FAQ 환영 모달 =====
   const WELCOME_KEY = 'moneypie_welcome_dismissed';
   const modal = document.getElementById('welcomeModal');
   const closeBtn = document.getElementById('welcomeCloseBtn');
@@ -5022,8 +5030,8 @@ function checkNoticeHtml(){
       try { localStorage.setItem(WELCOME_KEY, '1'); } catch(e){}
     }
     if(modal) modal.style.display = 'none';
-    // FAQ를 닫은 뒤 매뉴얼이 아직 안 본 상태면 이어서 표시
-    showManualIfNeeded();
+    // FAQ 닫은 뒤 → 종목추가 가이드 (매번) → 매뉴얼
+    showIntroGuide();
   }
 
   if(closeBtn) closeBtn.addEventListener('click', closeWelcomeModal);
@@ -5031,19 +5039,15 @@ function checkNoticeHtml(){
     if(e.target.id === 'welcomeModal') closeWelcomeModal();
   });
 
-  function startWelcomeAndManual(){
-    let welcomeDismissed = false;
-    try { welcomeDismissed = localStorage.getItem(WELCOME_KEY) === '1'; } catch(e){}
-    if(!welcomeDismissed && modal){
-      modal.style.display = 'flex';
-    } else {
-      // FAQ를 이미 본 상태라면 매뉴얼만 바로 표시
-      showManualIfNeeded();
-    }
+  // FAQ 표시 (이미 본 경우에도 바로 종목추가 가이드로)
+  let welcomeDismissed = false;
+  try { welcomeDismissed = localStorage.getItem(WELCOME_KEY) === '1'; } catch(e){}
+  if(!welcomeDismissed && modal){
+    modal.style.display = 'flex';
+  } else {
+    // FAQ를 이미 본 상태라면 종목추가 가이드부터
+    showIntroGuide();
   }
-
-  // notice(html) 이후 종목추가 가이드 → 그 다음 FAQ/매뉴얼
-  showIntroGuideIfNeeded();
 })();
 </script>
 
