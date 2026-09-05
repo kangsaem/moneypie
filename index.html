@@ -21,6 +21,12 @@
 <link rel="icon" href="favicon-48.png" sizes="48x48" type="image/png">
 <link rel="icon" href="apple-touch-icon.png" sizes="180x180" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#1E1F22">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="머니파이">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -327,7 +333,7 @@
 <!-- 종목추가 가이드 (in001~in003) -->
 <div id="introGuideModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:3400;align-items:center;justify-content:center;padding:12px;cursor:pointer;">
   <div style="position:relative;max-width:min(420px,96vw);text-align:center;">
-    <img id="introGuideImage" src="in001.png" alt="종목추가 가이드" style="max-width:100%;max-height:min(80vh,620px);width:auto;height:auto;display:block;border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,0.45);margin:0 auto;">
+    <img id="introGuideImage" src="in001.png" alt="종목추가 가이드" style="max-width:100%;max-height:min(80vh,620px);width:auto;height:auto;display:block;border-radius:10px;margin:0 auto;">
     <div id="introGuideStepLabel" style="margin-top:12px;font-size:13px;color:var(--text-dim);font-weight:600;">1 / 3 · 화면을 터치하면 다음으로</div>
   </div>
 </div>
@@ -467,13 +473,7 @@ function formatPricePerShare(h){
 
 async function fetchYahooHoldingPrice(symbol){
   const targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=1d&interval=1d&_=${Date.now()}`;
-  let res;
-  try{
-    res = await fetchWithTimeout(targetUrl, { cache: 'no-store' }, 3000);
-    if(!res.ok) throw new Error('direct fetch failed');
-  }catch(e){
-    res = await fetchWithTimeout(`https://moneypie-proxy.y0n2.workers.dev/?url=${encodeURIComponent(targetUrl)}`, { cache: 'no-store' }, 5000);
-  }
+  const res = await fetchYahooProxied(targetUrl);
   const data = await res.json();
   const result = data.chart && data.chart.result && data.chart.result[0];
   const price = result && result.meta && result.meta.regularMarketPrice;
@@ -650,6 +650,7 @@ async function refreshAllQuantityHoldingPrices(){
   state.accounts.forEach(acc => (acc.holdings||[]).forEach(h => { if(h.quantity != null && h.symbol) targets.push(h); }));
   if(targets.length === 0) return;
   if(typeof resetStockHistoryCache === 'function') resetStockHistoryCache(); // 리로드시 종목 아코디언 그래프 캐시도 초기화
+  fxRateCache = {}; // 리로드시 환율도 캐시된 옛날 값이 아니라 새로 받아오도록 초기화
   await Promise.allSettled(targets.map(h => refreshHoldingPrice(h)));
   syncQuantityHoldingsAmounts();
   save();
@@ -662,21 +663,51 @@ function fetchWithTimeout(url, opts, ms){
   return fetch(url, { ...opts, signal: controller.signal }).finally(() => clearTimeout(timer));
 }
 
+// 외부 API(야후, 네이버 등)를 프록시로 호출하는 공용 헬퍼.
+// 1차: Cloudflare Worker. 여기서 429(요청 과다)를 받으면 잠깐 쉬었다가 한 번 더 재시도.
+// 그래도 실패하면(429 계속 or 네트워크 에러) 2차: Google Cloud Run 프록시(다른 IP 대역)로 우회.
+const PROXY_PRIMARY = 'https://moneypie-proxy.y0n2.workers.dev/?url=';
+const PROXY_SECONDARY = 'https://moneypie-proxy2-1091905448059.asia-northeast3.run.app/?url=';
+
+async function fetchViaProxy(targetUrl, timeoutMs, retries){
+  timeoutMs = timeoutMs || 7000;
+  retries = retries != null ? retries : 1;
+
+  // 1차: Cloudflare Worker (429면 재시도)
+  let res = null;
+  try{
+    for(let attempt = 0; attempt <= retries; attempt++){
+      res = await fetchWithTimeout(PROXY_PRIMARY + encodeURIComponent(targetUrl), { cache: 'no-store' }, timeoutMs);
+      if(res.status !== 429) break;
+      if(attempt < retries) await new Promise(r => setTimeout(r, 1500));
+    }
+  }catch(e){ res = null; }
+
+  if(res && res.ok) return res;
+
+  // 2차: Google Cloud Run 프록시로 우회 (Cloudflare가 완전히 막혔거나 네트워크 에러인 경우)
+  try{
+    const res2 = await fetchWithTimeout(PROXY_SECONDARY + encodeURIComponent(targetUrl), { cache: 'no-store' }, timeoutMs);
+    if(res2.ok) return res2;
+    return res2; // 2차도 실패했지만, 그 응답을 그대로 반환해서 호출부가 status를 보고 처리하게 함
+  }catch(e){
+    if(res) return res; // 2차가 네트워크 에러로 완전히 실패하면, 그나마 있는 1차 결과라도 반환
+    throw e;
+  }
+}
+// 이전 이름으로 부르던 곳들과의 호환을 위한 별칭
+const fetchYahooProxied = fetchViaProxy;
+
 async function fetchNaverIndex(naverCode){
   const targetUrl = `https://polling.finance.naver.com/api/realtime/domestic/index/${naverCode}?_=${Date.now()}`;
-  const attempts = [
-    () => fetchWithTimeout(targetUrl, { cache: 'no-store' }, 3000),
-    () => fetchWithTimeout(`https://moneypie-proxy.y0n2.workers.dev/?url=${encodeURIComponent(targetUrl)}`, { cache: 'no-store' }, 4000),
-    () => fetchWithTimeout(`https://moneypie-proxy.y0n2.workers.dev/?url=${encodeURIComponent(targetUrl)}`, { cache: 'no-store' }, 4000)
-  ];
-  let res = null;
-  for(const attempt of attempts){
-    try{
-      res = await attempt();
-      if(res && res.ok) break;
-    }catch(e){ res = null; }
+  let res;
+  try{
+    res = await fetchWithTimeout(targetUrl, { cache: 'no-store' }, 3000);
+    if(!res.ok) throw new Error('direct fetch failed');
+  }catch(e){
+    try{ res = await fetchViaProxy(targetUrl); }catch(e2){ return null; }
   }
-  if(!res) return null;
+  if(!res || !res.ok) return null;
   const json = await res.json();
   const row = json.datas && json.datas[0];
   if(!row) return null;
@@ -706,13 +737,8 @@ async function fetchYahooChart(symbol, range, wideIntraday){
   const apiRange = isIntraday ? (wideIntraday ? '2d' : '1d') : range;
   const interval = isIntraday ? '2m' : '1d';
   const targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${apiRange}&interval=${interval}&_=${Date.now()}`;
-  let res;
-  try{
-    res = await fetchWithTimeout(targetUrl, { cache: 'no-store' }, 3000);
-    if(!res.ok) throw new Error('direct fetch failed');
-  }catch(e){
-    res = await fetchWithTimeout(`https://moneypie-proxy.y0n2.workers.dev/?url=${encodeURIComponent(targetUrl)}`, { cache: 'no-store' }, 5000);
-  }
+  const res = await fetchYahooProxied(targetUrl);
+  if(!res.ok) throw new Error('야후 시세 조회 실패: ' + res.status);
   const data = await res.json();
   const result = data.chart.result[0];
   const meta = result.meta;
@@ -1195,7 +1221,7 @@ function exportData(){
 }
 
 function exportXLSX(){
-  const holdingRows = [['계좌명','계좌유형','종목','섹터','지역','평가액','주식수','심볼','국가','1주가격','통화','야후심볼','원본검색어']];
+  const holdingRows = [['계좌명','계좌유형','종목','섹터','지역','평가액','주식수','심볼','국가','1주가격','통화','야후심볼','원본검색어','계좌ID']];
   state.accounts.forEach(a => {
     a.holdings.forEach(h => {
       const name = isCashHolding(h) ? (h.region === 'overseas' ? '외화' : '원화') : h.name;
@@ -1212,12 +1238,13 @@ function exportXLSX(){
         h.lastPrice != null ? h.lastPrice : '',
         h.currency || '',
         h.yahooSymbol || '',
-        h.fallbackText || ''
+        h.fallbackText || '',
+        a.id
       ]);
     });
   });
 
-  const accountSummaryRows = [['계좌명','계좌유형','총평가액','종목수','국내비중(%)','해외비중(%)']];
+  const accountSummaryRows = [['계좌명','계좌유형','총평가액','종목수','국내비중(%)','해외비중(%)','계좌ID']];
   state.accounts.forEach(a => {
     const total = _.sumBy(a.holdings, 'amount');
     const domestic = _.sumBy(a.holdings.filter(h => (h.region||'domestic') !== 'overseas'), 'amount');
@@ -1228,7 +1255,8 @@ function exportXLSX(){
       total,
       a.holdings.length,
       total ? Math.round(domestic/total*1000)/10 : 0,
-      total ? Math.round(overseas/total*1000)/10 : 0
+      total ? Math.round(overseas/total*1000)/10 : 0,
+      a.id
     ]);
   });
 
@@ -1247,7 +1275,7 @@ function exportXLSX(){
     snapshotRows.push([fullMonthLabel(s.label), total, domestic, overseas, creditUsed, s.memo || '']);
   });
 
-  const snapshotDetailRows = [['월','계좌명','계좌유형','종목','섹터','지역','평가액','주식수','심볼','국가','1주가격','통화','야후심볼','원본검색어']];
+  const snapshotDetailRows = [['월','계좌명','계좌유형','종목','섹터','지역','평가액','주식수','심볼','국가','1주가격','통화','야후심볼','원본검색어','계좌ID']];
   state.snapshots.forEach(s => {
     s.accounts.forEach(a => {
       a.holdings.forEach(h => {
@@ -1266,7 +1294,8 @@ function exportXLSX(){
           h.lastPrice != null ? h.lastPrice : '',
           h.currency || '',
           h.yahooSymbol || '',
-          h.fallbackText || ''
+          h.fallbackText || '',
+          a.id
         ]);
       });
     });
@@ -1276,6 +1305,23 @@ function exportXLSX(){
   state.snapshots.forEach(s => {
     (s.creditLines || []).forEach(c => {
       snapshotCreditRows.push([fullMonthLabel(s.label), c.institution, c.limit, c.used]);
+    });
+  });
+
+  // 종목이 하나도 없는 계좌는 '월별상세종목' 시트에 행이 생기지 않아 복원 시 사라지므로,
+  // '계좌별요약'과 같은 방식으로 월별 계좌 목록을 별도 시트에 남겨 복원할 때 참조할 수 있게 한다.
+  const snapshotAccountSummaryRows = [['월','계좌명','계좌유형','총평가액','종목수','계좌ID']];
+  state.snapshots.forEach(s => {
+    s.accounts.forEach(a => {
+      const total = _.sumBy(a.holdings, 'amount');
+      snapshotAccountSummaryRows.push([
+        fullMonthLabel(s.label),
+        a.name,
+        a.accountType || '직투',
+        total,
+        a.holdings.length,
+        a.id
+      ]);
     });
   });
 
@@ -1293,6 +1339,8 @@ function exportXLSX(){
     XLSX.utils.book_append_sheet(wb, wsSnap, '월별변화');
     const wsSnapDetail = XLSX.utils.aoa_to_sheet(snapshotDetailRows);
     XLSX.utils.book_append_sheet(wb, wsSnapDetail, '월별상세종목');
+    const wsSnapAccountSummary = XLSX.utils.aoa_to_sheet(snapshotAccountSummaryRows);
+    XLSX.utils.book_append_sheet(wb, wsSnapAccountSummary, '월별계좌요약');
     if(snapshotCreditRows.length > 1){
       const wsSnapCredit = XLSX.utils.aoa_to_sheet(snapshotCreditRows);
       XLSX.utils.book_append_sheet(wb, wsSnapCredit, '월별마통');
@@ -1340,14 +1388,18 @@ function importXLSX(file){
         }
         return holding;
       }
+      // 계좌를 구분할 때, 최신 형식(계좌ID 열 포함)이면 ID로 정확히 구분하고,
+      // 옛날 형식(계좌ID 열 없음)으로 내보낸 파일이면 예전처럼 "계좌명+계좌유형"으로 묶는다(하위호환).
+      // ID 기반으로 구분해야 이름과 유형이 같은 서로 다른 계좌가 복원 시 하나로 합쳐지는 걸 막을 수 있다.
       function buildAccountsFromRows(rows){
         const byAccount = {};
         const order = [];
         rows.forEach(r => {
-          const [accName, accType, holdName, group, region, amount, quantity, symbol, nationName, lastPrice, currency, yahooSymbol, fallbackText] = r;
-          const key = accName + '||' + accType;
+          const [accName, accType, holdName, group, region, amount, quantity, symbol, nationName, lastPrice, currency, yahooSymbol, fallbackText, accountId] = r;
+          const hasId = accountId !== undefined && accountId !== null && String(accountId).trim() !== '';
+          const key = hasId ? String(accountId) : (accName + '||' + accType);
           if(!byAccount[key]){
-            byAccount[key] = { id: uid(), name: String(accName || '계좌'), accountType: ACCOUNT_TYPES.includes(accType) ? accType : '직투', holdings: [] };
+            byAccount[key] = { id: hasId ? String(accountId) : uid(), name: String(accName || '계좌'), accountType: ACCOUNT_TYPES.includes(accType) ? accType : '직투', holdings: [] };
             order.push(key);
           }
           byAccount[key].holdings.push(rowToHolding(holdName, group, region, amount, quantity, symbol, nationName, lastPrice, currency, yahooSymbol, fallbackText));
@@ -1355,8 +1407,35 @@ function importXLSX(file){
         return order.map(k => byAccount[k]);
       }
 
+      // 종목이 0개라 '보유종목'/'월별상세종목' 시트에 행이 없는 계좌를, 계좌 요약 시트(모든 계좌가
+      // 무조건 한 줄씩 있음)를 참고해서 채워 넣는다. 현재 계좌와 월별 스냅샷 계좌 양쪽에서 재사용한다.
+      // refs: [{ name, accountType, accountId }] 형태로 미리 정규화해서 넘긴다 (시트마다 컬럼 위치가 달라서).
+      function addMissingAccountsFromRefs(accountsArr, refs){
+        refs.forEach(({ name: accName, accountType: accType, accountId }) => {
+          const hasId = accountId !== undefined && accountId !== null && String(accountId).trim() !== '';
+          const alreadyExists = hasId
+            ? accountsArr.some(a => a.id === String(accountId))
+            : accountsArr.some(a => a.name === String(accName || '') && a.accountType === (ACCOUNT_TYPES.includes(accType) ? accType : '직투'));
+          if(!alreadyExists){
+            accountsArr.push({
+              id: hasId ? String(accountId) : uid(),
+              name: String(accName || '계좌'),
+              accountType: ACCOUNT_TYPES.includes(accType) ? accType : '직투',
+              holdings: []
+            });
+          }
+        });
+        return accountsArr;
+      }
+
       const holdingRows = sheetRows('보유종목');
       const newAccounts = buildAccountsFromRows(holdingRows);
+
+      // 보유종목이 하나도 없는 계좌는 '보유종목' 시트에 행이 생기지 않으므로 위에서 복원되지 않는다.
+      // '계좌별요약' 시트에는 보유종목 개수와 무관하게 모든 계좌가 한 줄씩 있으므로, 여기 있지만
+      // 위에서 아직 복원되지 않은 계좌(=빈 계좌)를 찾아서 종목 없이 추가해준다.
+      // 컬럼 순서: 계좌명, 계좌유형, 총평가액, 종목수, 국내비중(%), 해외비중(%), 계좌ID
+      addMissingAccountsFromRefs(newAccounts, sheetRows('계좌별요약').map(r => ({ name: r[0], accountType: r[1], accountId: r[6] })));
 
       const creditRows = sheetRows('마통현황');
       const newCreditLines = creditRows.map(r => ({
@@ -1365,14 +1444,21 @@ function importXLSX(file){
 
       const byMonth = {};
       function ensureMonth(rawLabel){
-        if(!byMonth[rawLabel]) byMonth[rawLabel] = { accountRows: [], creditRows: [], memo: '' };
+        if(!byMonth[rawLabel]) byMonth[rawLabel] = { accountRows: [], creditRows: [], accountSummaryRefs: [], memo: '' };
         return byMonth[rawLabel];
       }
 
       sheetRows('월별상세종목').forEach(r => {
-        const [monthLabel, accName, accType, holdName, group, region, amount, quantity, symbol, nationName, lastPrice, currency, yahooSymbol, fallbackText] = r;
+        const [monthLabel, accName, accType, holdName, group, region, amount, quantity, symbol, nationName, lastPrice, currency, yahooSymbol, fallbackText, accountId] = r;
         const rawLabel = String(monthLabel || '').replace(/-/g, '');
-        ensureMonth(rawLabel).accountRows.push([accName, accType, holdName, group, region, amount, quantity, symbol, nationName, lastPrice, currency, yahooSymbol, fallbackText]);
+        ensureMonth(rawLabel).accountRows.push([accName, accType, holdName, group, region, amount, quantity, symbol, nationName, lastPrice, currency, yahooSymbol, fallbackText, accountId]);
+      });
+      // 종목이 0개라 '월별상세종목'에 행이 없는 계좌를 복원하기 위한 월별 계좌 요약(빈 계좌 포함 전체 목록)
+      // 컬럼 순서: 월, 계좌명, 계좌유형, 총평가액, 종목수, 계좌ID
+      sheetRows('월별계좌요약').forEach(r => {
+        const [monthLabel, accName, accType, , , accountId] = r;
+        const rawLabel = String(monthLabel || '').replace(/-/g, '');
+        ensureMonth(rawLabel).accountSummaryRefs.push({ name: accName, accountType: accType, accountId });
       });
       sheetRows('월별마통').forEach(r => {
         const [monthLabel, institution, limit, used] = r;
@@ -1387,11 +1473,13 @@ function importXLSX(file){
 
       const newSnapshots = Object.keys(byMonth).map(rawLabel => {
         const info = byMonth[rawLabel];
+        const snapAccounts = buildAccountsFromRows(info.accountRows);
+        addMissingAccountsFromRefs(snapAccounts, info.accountSummaryRefs);
         return {
           id: uid(),
           label: rawLabel,
           timestamp: Date.now(),
-          accounts: buildAccountsFromRows(info.accountRows),
+          accounts: snapAccounts,
           creditLines: info.creditRows.map(([institution, limit, used]) => ({
             id: uid(), institution: String(institution || ''), limit: toNum(limit), used: toNum(used)
           })),
@@ -1764,8 +1852,9 @@ async function searchNaverAutocomplete(query){
     res = await fetchWithTimeout(targetUrl, { cache: 'no-store' }, 3000);
     if(!res.ok) throw new Error('direct fetch failed');
   }catch(e){
-    res = await fetchWithTimeout(`https://moneypie-proxy.y0n2.workers.dev/?url=${encodeURIComponent(targetUrl)}`, { cache: 'no-store' }, 5000);
+    res = await fetchViaProxy(targetUrl);
   }
+  if(!res.ok) throw new Error('네이버 검색 실패: ' + res.status);
   const data = await res.json();
   if(data.result && Array.isArray(data.result.items)){
     return data.result.items.map(it => ({
@@ -2220,7 +2309,7 @@ const STOCK_SORT_CYCLE_FULL = ['amount', 'group', 'region', 'name'];
 const STOCK_SORT_CYCLE_NO_REGION = ['amount', 'group', 'name'];
 const STOCK_SORT_LABEL = { amount:'금액순', group:'섹터순', region:'지역순', name:'이름순' };
 
-function computeStockDataWithMeta(holdings){
+function computeStockDataWithMeta(holdings, fallbackAccId){
   const total = _.sumBy(holdings, 'amount');
   const grouped = _.chain(holdings)
     .groupBy('name')
@@ -2228,7 +2317,13 @@ function computeStockDataWithMeta(holdings){
       label: name,
       amount: _.sumBy(items, 'amount'),
       group: items[0].group,
-      region: items[0].region || 'domestic'
+      region: items[0].region || 'domestic',
+      // 종목 히스토리 아코디언(1일/1-3-6-12개월 가격변화)을 열기 위한 대표 계좌/종목 id.
+      // 같은 이름의 종목이 여러 계좌에 걸쳐 있으면 그 중 첫 항목을 대표로 사용한다.
+      accId: items[0]._accId || fallbackAccId,
+      holdId: items[0].id,
+      quantity: items[0].quantity,
+      symbol: items[0].symbol
     }))
     .orderBy(['amount'], ['desc'])
     .value();
@@ -2428,8 +2523,14 @@ function stockLegendWithDividers(data, sortMode){
     const rankCount = d.rankCount !== undefined ? d.rankCount : data.length;
     const color = rankColor(d.label, rank, rankCount, 'stock');
     const isCashLabel = isCashLikeLabel(d.label);
-    const cashStyle = isCashLabel ? 'color:#F0DA8C;font-weight:700;' : '';
-    html += `<div class="legend-item"><span class="swatch" style="background:${color}"></span><span class="legend-name" style="${cashStyle}">${escapeHTML(d.label)}</span><span class="legend-pct num" style="${cashStyle}">${d.pct.toFixed(1)}<span class="pct-sign">%</span></span></div>`;
+    // 계좌탭 목록과 동일한 색상 규칙: 개수(수량)로 입력된 종목은 연두, 평가액으로만 입력된 종목은 회색
+    const isQtyMode = !isCashLabel && d.quantity != null && d.symbol;
+    const qtyGreen = '#D4FF3D';
+    const modeStyle = isCashLabel ? 'color:#F0DA8C;font-weight:700;' : (isQtyMode ? `color:${qtyGreen};` : (d.quantity == null ? 'color:var(--text-dim);' : ''));
+    // 계좌탭과 동일하게 개수가 입력된(또는 수량 정보가 있는) 종목만 클릭해 가격변화 아코디언을 연다.
+    const canOpenStockHistory = !isCashLabel && d.quantity != null && d.accId && d.holdId;
+    const clickAttrs = canOpenStockHistory ? ` data-stock-history-name="${escapeHTML(d.holdId)}" data-stock-history-acc="${escapeHTML(d.accId)}" style="cursor:pointer;"` : '';
+    html += `<div class="legend-item"${clickAttrs}><span class="swatch" style="background:${color}"></span><span class="legend-name" style="${modeStyle}">${escapeHTML(d.label)}</span><span class="legend-pct num" style="${modeStyle}">${d.pct.toFixed(1)}<span class="pct-sign">%</span></span></div>`;
     if(i < data.length - 1){
       const next = data[i+1];
       let showDivider = false;
@@ -2448,10 +2549,10 @@ function stockLegendWithDividers(data, sortMode){
   return html;
 }
 
-function stockChartBlockSortable(holdings, allowRegion, extraRingSpecs){
+function stockChartBlockSortable(holdings, allowRegion, extraRingSpecs, fallbackAccId){
   stockSortCycleActive = allowRegion === false ? STOCK_SORT_CYCLE_NO_REGION : STOCK_SORT_CYCLE_FULL;
   if(!stockSortCycleActive.includes(stockLegendSortMode)) stockLegendSortMode = 'amount';
-  const rawData = computeStockDataWithMeta(holdings);
+  const rawData = computeStockDataWithMeta(holdings, fallbackAccId);
   const ordered = sortStockData(rawData, stockLegendSortMode);
   const centerLabel = STOCK_SORT_LABEL[stockLegendSortMode];
   // 외부링은 기본 투명도 0.5, 현재 정렬기준과 일치하는 링(섹터순->섹터링, 국내해외순->지역링)만 1.0
@@ -4310,7 +4411,7 @@ function renderPanel(){
     const accountsInScope = subType === null
       ? state.accounts
       : state.accounts.filter(a => (a.accountType||'직투') === subType);
-    const holdings = _.flatMap(accountsInScope, a => a.holdings).filter(h => (h.region||'domestic') === region);
+    const holdings = _.flatMap(accountsInScope, a => a.holdings.map(h => ({ ...h, _accId: a.id }))).filter(h => (h.region||'domestic') === region);
     const holdingsInScopeAllRegions = _.flatMap(accountsInScope, a => a.holdings);
     const byStock = computeWeights(holdings, 'name');
     const byGroup = computeWeights(holdings, 'group');
@@ -4356,12 +4457,14 @@ function renderPanel(){
     if(cashBadgeRegion) cashBadgeRegion.addEventListener('click', () => toggleCashAmountAccordion(parseFloat(cashBadgeRegion.dataset.cashbadge), cashBadgeRegion));
     bindReloadPricesBtn();
     const stockSortChart = document.getElementById('stock-sortable-chart');
-    if(stockSortChart) stockSortChart.querySelectorAll('.legend-item').forEach(el => {
-      el.style.cursor = 'pointer';
-      el.addEventListener('click', cycleStockSort);
-    });
     const stockDonut = stockSortChart ? stockSortChart.querySelector('[data-donut-cycle]') : null;
     if(stockDonut) stockDonut.addEventListener('click', cycleStockSort);
+    panel.querySelectorAll('[data-stock-history-name]').forEach(cell => {
+      cell.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openStockHistoryAccordion(cell.dataset.stockHistoryAcc, cell.dataset.stockHistoryName, cell);
+      });
+    });
     panel.querySelectorAll('[data-subtype-filter]').forEach(el => {
       el.addEventListener('click', () => {
         const clicked = el.dataset.subtypeFilter;
@@ -4402,7 +4505,7 @@ function renderPanel(){
 
   if(state.activeId === '__total__'){
     const allHoldings = _.flatMap(state.accounts, a => a.holdings);
-    const holdingsWithType = _.flatMap(state.accounts, a => a.holdings.map(h => ({ ...h, accountTypeLabel: a.accountType || '직투' })));
+    const holdingsWithType = _.flatMap(state.accounts, a => a.holdings.map(h => ({ ...h, accountTypeLabel: a.accountType || '직투', _accId: a.id })));
     const scopedHoldings = totalAccountTypeFilter ? holdingsWithType.filter(h => h.accountTypeLabel === totalAccountTypeFilter) : holdingsWithType;
     const byStock = computeWeights(scopedHoldings, 'name');
     const byGroup = computeWeights(scopedHoldings, 'group');
@@ -4463,12 +4566,14 @@ function renderPanel(){
     if(cashBadgeTotal) cashBadgeTotal.addEventListener('click', () => toggleCashAmountAccordion(parseFloat(cashBadgeTotal.dataset.cashbadge), cashBadgeTotal));
     bindReloadPricesBtn();
     const stockSortChartTotal = document.getElementById('stock-sortable-chart');
-    if(stockSortChartTotal) stockSortChartTotal.querySelectorAll('.legend-item').forEach(el => {
-      el.style.cursor = 'pointer';
-      el.addEventListener('click', cycleStockSort);
-    });
     const stockDonutTotal = stockSortChartTotal ? stockSortChartTotal.querySelector('[data-donut-cycle]') : null;
     if(stockDonutTotal) stockDonutTotal.addEventListener('click', cycleStockSort);
+    panel.querySelectorAll('[data-stock-history-name]').forEach(cell => {
+      cell.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openStockHistoryAccordion(cell.dataset.stockHistoryAcc, cell.dataset.stockHistoryName, cell);
+      });
+    });
     return;
   }
 
@@ -4503,7 +4608,7 @@ function renderPanel(){
       ${stockChartBlockSortable(acc.holdings, true, [
         { data: computeWeights(acc.holdings, 'group'), type: 'group', name: 'decorative-sector' },
         { data: regionQuadRingData(acc.holdings), type: 'region', name: 'decorative-region', preOrdered: true }
-      ])}
+      ], acc.id)}
     </div>
   `;
 
@@ -4549,10 +4654,6 @@ function renderPanel(){
     });
   });
   const stockSortChartAcc = document.getElementById('stock-sortable-chart');
-  if(stockSortChartAcc) stockSortChartAcc.querySelectorAll('.legend-item').forEach(el => {
-    el.style.cursor = 'pointer';
-    el.addEventListener('click', cycleStockSort);
-  });
   const stockDonutAcc = stockSortChartAcc ? stockSortChartAcc.querySelector('[data-donut-cycle]') : null;
   if(stockDonutAcc) stockDonutAcc.addEventListener('click', cycleStockSort);
 }
@@ -4579,7 +4680,7 @@ document.getElementById('addAccountCancelBtn').addEventListener('click', closeAd
 document.getElementById('editAccountNameCancelBtn').addEventListener('click', closeEditAccountNameModal);
 document.getElementById('editAccountNameSaveBtn').addEventListener('click', saveEditAccountNameModal);
 document.getElementById('editAccountNameModal').addEventListener('click', (e) => {
-  if(e.target.id === 'editAccountNameModal') closeEditAccountNameModal();
+  if(e.target.id === 'editAccountNameModal' && !modalTextSelecting) closeEditAccountNameModal();
 });
 document.getElementById('noticeModalOkBtn').addEventListener('click', closeNoticeModal);
 document.getElementById('noticeModal').addEventListener('click', (e) => {
@@ -4588,18 +4689,18 @@ document.getElementById('noticeModal').addEventListener('click', (e) => {
 document.getElementById('saveSnapshotCancelBtn').addEventListener('click', closeSaveSnapshotModal);
 document.getElementById('saveSnapshotConfirmBtn').addEventListener('click', confirmSaveSnapshot);
 document.getElementById('saveSnapshotModal').addEventListener('click', (e) => {
-  if(e.target.id === 'saveSnapshotModal') closeSaveSnapshotModal();
+  if(e.target.id === 'saveSnapshotModal' && !modalTextSelecting) closeSaveSnapshotModal();
 });
 document.getElementById('addAccountSaveBtn').addEventListener('click', saveAddAccountModal);
 document.getElementById('addAccountModal').addEventListener('click', (e) => {
-  if(e.target.id === 'addAccountModal') closeAddAccountModal();
+  if(e.target.id === 'addAccountModal' && !modalTextSelecting) closeAddAccountModal();
 });
 document.getElementById('editCreditSaveBtn').addEventListener('click', saveEditCreditModal);
 let modalTextSelecting = false;
-document.getElementById('editModal').addEventListener('mousedown', (e) => {
+document.addEventListener('mousedown', (e) => {
   if(e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') modalTextSelecting = true;
 });
-document.getElementById('editModal').addEventListener('touchstart', (e) => {
+document.addEventListener('touchstart', (e) => {
   if(e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') modalTextSelecting = true;
 }, { passive: true });
 window.addEventListener('mouseup', () => { setTimeout(() => { modalTextSelecting = false; }, 50); });
