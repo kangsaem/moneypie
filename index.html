@@ -1064,6 +1064,14 @@ function textColorForBg(hex){
   const lum = (0.299*rgb[0] + 0.587*rgb[1] + 0.114*rgb[2]) / 255;
   return lum > 0.55 ? '#111' : '#fff';
 }
+// 계좌유형 버튼용 고정 5단계(짙은색->밝은색) 그라데이션. 실제 표시되는 순서(왼쪽부터)대로 0~4번째 칸에 매핑.
+function fixedTypeStepColor(typeIdx){
+  return lerpColor(ACCTYPE_STRONG, ACCTYPE_LIGHT, Math.min(1, typeIdx/4));
+}
+// 왼쪽에서 1,2번째(짙은색)는 흰 글자, 3,4,5번째(연한색)는 검은 글자
+function fixedTypeStepTextColor(typeIdx){
+  return typeIdx <= 1 ? '#fff' : '#111';
+}
 function lerpColor(hex1, hex2, t){
   const a = hexToRgb(hex1), b = hexToRgb(hex2);
   const rgb = a.map((v,i) => Math.round(v + (b[i]-v)*t));
@@ -2557,8 +2565,10 @@ function duoRingSVG(usedFraction, usedColor, remainFraction, remainColor, cx, cy
   const remainDash = Math.max(0, Math.min(1, remainFraction)) * circumference;
   const transform = `translate(${2*cx},0) scale(-1,1) rotate(-90 ${cx} ${cy})`;
   const usedCircle = `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="${usedColor}" stroke-width="${strokeWidth}" stroke-dasharray="${usedDash.toFixed(2)} ${(circumference-usedDash).toFixed(2)}" stroke-dashoffset="0" transform="${transform}" data-ring="${ringName}"><title>${escapeHTML(usedLabel || '')} ${(usedFraction*100).toFixed(1)}%</title></circle>`;
-  const remainCircle = `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="${remainColor}" stroke-width="${strokeWidth}" stroke-dasharray="${remainDash.toFixed(2)} ${(circumference-remainDash).toFixed(2)}" stroke-dashoffset="${(-usedDash).toFixed(2)}" opacity="0.5" transform="${transform}" data-ring="${ringName}"><title>${escapeHTML(remainLabel || '')} ${(remainFraction*100).toFixed(1)}%</title></circle>`;
-  return usedCircle + remainCircle;
+  const remainCircle = `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="${remainColor}" stroke-width="${strokeWidth}" stroke-dasharray="${remainDash.toFixed(2)} ${(circumference-remainDash).toFixed(2)}" stroke-dashoffset="${(-usedDash).toFixed(2)}" opacity="0.7" transform="${transform}" data-ring="${ringName}"><title>${escapeHTML(remainLabel || '')} ${(remainFraction*100).toFixed(1)}%</title></circle>`;
+  // 잔여액을 먼저 그리고 사용액을 나중에(위에) 그려서, 잔여 구간이 원을 한 바퀴 넘어가며 겹치는 경우에도
+  // 사용액이 항상 보이도록 한다.
+  return remainCircle + usedCircle;
 }
 
 // 부분 링(마통사용 등)의 중간 지점에 작은 라벨을 표시.
@@ -4163,9 +4173,9 @@ function renderHistoryPanel(){
     </div>
     <div id="historyAccTypeSelector" style="display:flex;gap:6px;margin-bottom:10px;">
       ${['직투','연금','DC','IRP','ISA'].map((t,i) => {
-        const rankBg = rankColor(t, i, 5, 'accountType');
+        const stepBg = fixedTypeStepColor(i);
         const isSel = historySelectedTypes.includes(t);
-        return `<button class="btn" data-history-acc-type="${t}" style="padding:4px 10px;font-size:12px;flex-shrink:0;min-width:52px;text-align:center;${isSel ? `background:${rankBg};color:${textColorForBg(rankBg)};` : ''}">${t}</button>`;
+        return `<button class="btn" data-history-acc-type="${t}" style="padding:4px 10px;font-size:12px;flex-shrink:0;min-width:52px;text-align:center;${isSel ? `background:${stepBg};color:${fixedTypeStepTextColor(i)};` : ''}">${t}</button>`;
       }).join('')}
     </div>
   `;
@@ -4287,13 +4297,17 @@ function subTypeBarBlock(holdingsWithType, selectedTypes){
   const sel = selectedTypes || [];
   const data = computeWeights(holdingsWithType, 'accountTypeLabel');
   if(data.length === 0) return '';
+  let typeIdx = 0;
   const legendHtml = data.map((d,i) => {
     const isCash = d.label === '현금';
     const isSelected = sel.includes(d.label);
     const clickable = !isCash && ACCOUNT_TYPES.includes(d.label);
+    const stepBg = clickable ? fixedTypeStepColor(typeIdx) : null;
+    const stepText = clickable ? fixedTypeStepTextColor(typeIdx) : null;
+    if(clickable) typeIdx++;
     const rankBg = rankColor(d.label, i, data.length, 'accountType');
     const btnStyle = clickable
-      ? `cursor:pointer;border:1px solid ${isSelected ? rankBg : 'var(--border)'};border-radius:6px;padding:4px 6px;${isSelected ? `background:${rankBg};color:${textColorForBg(rankBg)};` : ''}`
+      ? `cursor:pointer;border:1px solid ${isSelected ? stepBg : 'var(--border)'};border-radius:6px;padding:4px 6px;${isSelected ? `background:${stepBg};color:${stepText};` : ''}`
       : 'padding:4px 6px;';
     return `<div class="legend-item" ${clickable ? `data-subtype-filter="${escapeHTML(d.label)}"` : ''} style="flex-direction:column;align-items:center;gap:2px;min-width:0;${btnStyle}"><span style="display:flex;align-items:center;gap:4px;"><span class="swatch" style="background:${isSelected ? 'var(--bg)' : rankBg};width:8px;height:8px;flex-shrink:0;"></span><span class="legend-name" style="font-size:12.5px;white-space:nowrap;">${escapeHTML(d.label)}</span></span><span class="legend-pct num" style="font-size:12.5px;white-space:nowrap;">${d.pct.toFixed(1)}<span class="pct-sign">%</span></span></div>`;
   }).join('');
@@ -4308,13 +4322,17 @@ function accountTypeBarChartBlock(selectedTypes){
   const holdingsWithType = _.flatMap(state.accounts, a => a.holdings.map(h => ({ ...h, accountTypeLabel: a.accountType || '직투' })));
   const data = computeWeights(holdingsWithType, 'accountTypeLabel');
   if(data.length === 0) return '';
+  let typeIdx = 0;
   const legendHtml = data.map((d,i) => {
     const isCash = d.label === '현금';
     const isSelected = sel.includes(d.label);
     const clickable = !isCash && ACCOUNT_TYPES.includes(d.label);
+    const stepBg = clickable ? fixedTypeStepColor(typeIdx) : null;
+    const stepText = clickable ? fixedTypeStepTextColor(typeIdx) : null;
+    if(clickable) typeIdx++;
     const rankBg = rankColor(d.label, i, data.length, 'accountType');
     const btnStyle = clickable
-      ? `cursor:pointer;border:1px solid ${isSelected ? rankBg : 'var(--border)'};border-radius:6px;padding:4px 6px;${isSelected ? `background:${rankBg};color:${textColorForBg(rankBg)};` : ''}`
+      ? `cursor:pointer;border:1px solid ${isSelected ? stepBg : 'var(--border)'};border-radius:6px;padding:4px 6px;${isSelected ? `background:${stepBg};color:${stepText};` : ''}`
       : 'padding:4px 6px;';
     return `<div class="legend-item" ${clickable ? `data-accounttype-filter="${escapeHTML(d.label)}"` : ''} style="flex-direction:column;align-items:center;gap:2px;min-width:0;${btnStyle}"><span style="display:flex;align-items:center;gap:4px;"><span class="swatch" style="background:${isSelected ? 'var(--bg)' : rankBg};width:8px;height:8px;flex-shrink:0;"></span><span class="legend-name" style="font-size:12.5px;white-space:nowrap;">${escapeHTML(d.label)}</span></span><span class="legend-pct num" style="font-size:12.5px;white-space:nowrap;">${d.pct.toFixed(1)}<span class="pct-sign">%</span></span></div>`;
   }).join('');
@@ -4332,7 +4350,7 @@ function creditGaugeChartBlock(showAmountOverlay){
   const remainPct = totalLimit ? (remain/totalLimit*100) : 0;
   const gaugeData = [
     { label:'마통사용', amount: totalUsed, color: CREDIT_USED_COLOR },
-    { label:'잔여한도', amount: remain, color: CREDIT_REMAIN_COLOR, opacity: 0.5 }
+    { label:'잔여한도', amount: remain, color: CREDIT_REMAIN_COLOR, opacity: 0.7 }
   ];
   const overlayHtml = showAmountOverlay ? `<div style="position:absolute;top:0;left:0;width:${usedPct.toFixed(2)}%;height:22px;display:flex;align-items:center;justify-content:flex-end;padding-right:6px;box-sizing:border-box;overflow:hidden;pointer-events:none;"><span style="color:#FBD9E4;font-size:15px;font-weight:500;white-space:nowrap;">${Math.floor(totalUsed/10000).toLocaleString()}</span></div>` : '';
   return `<div class="chart-box" style="grid-column:1/-1;max-width:800px;margin:0 auto;">
