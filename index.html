@@ -2049,7 +2049,7 @@ function editHolding(accId, holdId){
   const isCashQty = isCashHolding(h) && h.quantity != null && h.currency;
   const hasCode = (h.quantity != null && h.symbol) || isCashQty;
   editResolvedCode = isCashQty ? { isCashCurrency: true, currency: h.currency }
-    : (h.quantity != null && h.symbol ? { code: h.symbol, region: h.region, nationName: h.nationName } : null);
+    : (h.quantity != null && h.symbol ? { code: h.symbol, region: h.region, nationName: h.nationName, listingRegion: h.listingRegion } : null);
   document.getElementById('editModeQtyHint').style.display = editResolvedCode ? 'none' : '';
   const groupInput = document.getElementById('editGroup');
   if(isCashQty){ groupInput.value = '현금'; groupInput.disabled = true; } else { groupInput.disabled = false; }
@@ -2141,7 +2141,10 @@ async function saveEditModal(){
     priceCurrency = result.currency;
     // 네이버 검색 시점에 판별된 진짜 상장지역(코스피/코스닥 여부)을 저장해둔다.
     // 이후 시세 조회시 이 값으로 네이버 우선 조회 여부를 정확히 판단할 수 있다.
-    listingRegion = editResolvedCode.region;
+    // 재검색해서 새로 고른 경우엔 editResolvedCode.region(그 시점의 진짜 상장지역)을 쓰고,
+    // 재검색 없이 그냥 수정만 한 경우엔 기존에 저장돼있던 listingRegion을 그대로 보존한다
+    // (h.region은 투자목적 분류값이라 진짜 상장지역 대용으로 쓰면 안 된다).
+    listingRegion = ('listingRegion' in editResolvedCode) ? editResolvedCode.listingRegion : editResolvedCode.region;
   } else {
     amount = parseFloat(document.getElementById('editAmount').value);
     if(!name || isNaN(amount)){ alert('종목명과 평가액을 확인해주세요.'); return; }
@@ -2659,7 +2662,8 @@ function stockLegendWithDividers(data, sortMode){
     const hasListingRegion = isQtyMode && !!d.listingRegion;
     const qtyStyle = hasListingRegion ? 'color:#D4FF3D;' : 'color:#FFFFFF;';
     const nameStyle = isCashLabel ? 'color:#F0DA8C;font-weight:700;' : (isQtyMode ? qtyStyle : (d.quantity == null ? 'color:var(--text-dim);' : ''));
-    const pctStyle = isCashLabel ? 'color:#F0DA8C;font-weight:700;' : (isQtyMode ? qtyStyle : (d.quantity == null ? 'color:var(--text-dim);' : ''));
+    // 비중(%)에는 연두색을 적용하지 않고, 개수입력이면 항상 흰색으로 표시(상장지역 확인 여부와 무관)
+    const pctStyle = isCashLabel ? 'color:#F0DA8C;font-weight:700;' : (isQtyMode ? 'color:#FFFFFF;' : (d.quantity == null ? 'color:var(--text-dim);' : ''));
     // 계좌탭과 동일하게 개수가 입력된(또는 수량 정보가 있는) 종목만 클릭해 가격변화 아코디언을 연다.
     const canOpenStockHistory = !isCashLabel && d.quantity != null && d.accId && d.holdId;
     const clickAttrs = canOpenStockHistory ? ` data-stock-history-name="${escapeHTML(d.holdId)}" data-stock-history-acc="${escapeHTML(d.accId)}" style="cursor:pointer;${nameStyle}"` : ` style="${nameStyle}"`;
