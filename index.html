@@ -144,8 +144,6 @@
   .charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:24px;margin-top:8px;justify-content:center;}
   @media(max-width:640px){.charts{grid-template-columns:1fr;}}
   .chart-box{text-align:center;}
-  .flush-bar-group{border-radius:4px;overflow:hidden;}
-  .flush-bar-group svg{border-radius:0!important;}
   .donut-wrap{width:160px;height:160px;margin:0 auto;}
   .donut-wrap svg{filter:drop-shadow(7px 10px 10px rgba(0,0,0,0.16)) drop-shadow(3px 4px 4px rgba(0,0,0,0.1));}
   @media(max-width:640px){.donut-wrap{width:230px;height:230px;}}
@@ -552,6 +550,15 @@ async function refreshHoldingPrice(h){
     h.lastPrice = rate;
     return { symbol: h.symbol, price: rate, currency: h.currency, krwPrice: rate };
   }
+  // 국내종목(원화)은 네이버가 야후보다 정확도가 높아서 먼저 시도하고, 실패했을 때만 야후로 폴백한다.
+  if((h.region || 'domestic') !== 'overseas'){
+    const naverResult = await fetchNaverStockPrice(h.symbol);
+    if(naverResult && naverResult.price != null){
+      h.lastPrice = naverResult.price;
+      h.currency = 'KRW';
+      return { symbol: h.symbol, price: naverResult.price, currency: 'KRW', krwPrice: naverResult.price };
+    }
+  }
   if(h.yahooSymbol){
     const result = await fetchYahooHoldingPrice(h.yahooSymbol);
     if(result && result.price != null){
@@ -724,6 +731,27 @@ async function fetchNaverIndex(naverCode){
   const price = parseFloat(String(row.closePrice).replace(/,/g, ''));
   const changePct = parseFloat(String(row.fluctuationsRatio).replace(/,/g, ''));
   return { price, changePct };
+}
+// 국내 개별 종목 시세를 네이버에서 가져온다. h.symbol(네이버 6자리 코드)로 조회.
+// 네이버가 야후보다 국내종목 커버리지/정확도가 좋아서, 국내종목은 이 함수를 먼저 시도하고
+// 실패했을 때만 기존 야후 경로로 폴백한다 (refreshHoldingPrice 참고).
+async function fetchNaverStockPrice(naverCode){
+  const targetUrl = `https://polling.finance.naver.com/api/realtime/domestic/stock/${naverCode}?_=${Date.now()}`;
+  let res;
+  try{
+    res = await fetchWithTimeout(targetUrl, { cache: 'no-store' }, 3000);
+    if(!res.ok) throw new Error('direct fetch failed');
+  }catch(e){
+    try{ res = await fetchViaProxy(targetUrl); }catch(e2){ return null; }
+  }
+  if(!res || !res.ok) return null;
+  let json;
+  try{ json = await res.json(); }catch(e){ return null; }
+  const row = json.datas && json.datas[0];
+  if(!row) return null;
+  const price = parseFloat(String(row.closePrice).replace(/,/g, ''));
+  if(!isFinite(price) || price <= 0) return null;
+  return { price, currency: 'KRW' };
 }
 function koreanMarketTimesForToday(){
   const kstMs = Date.now() + 9*60*60*1000;
@@ -4307,9 +4335,10 @@ function subTypeBarBlock(holdingsWithType, selectedTypes){
     if(clickable) typeIdx++;
     const rankBg = rankColor(d.label, i, data.length, 'accountType');
     const btnStyle = clickable
-      ? `cursor:pointer;border:1px solid ${isSelected ? stepBg : 'var(--border)'};border-radius:6px;padding:4px 6px;${isSelected ? `background:${stepBg};color:${stepText};` : ''}`
+      ? `cursor:pointer;border:1px solid ${isSelected ? stepBg : 'var(--border)'};border-radius:6px;padding:4px 6px;${isSelected ? `background:${stepBg};` : ''}`
       : 'padding:4px 6px;';
-    return `<div class="legend-item" ${clickable ? `data-subtype-filter="${escapeHTML(d.label)}"` : ''} style="flex-direction:column;align-items:center;gap:2px;min-width:0;${btnStyle}"><span style="display:flex;align-items:center;gap:4px;"><span class="swatch" style="background:${isSelected ? 'var(--bg)' : rankBg};width:8px;height:8px;flex-shrink:0;"></span><span class="legend-name" style="font-size:12.5px;white-space:nowrap;">${escapeHTML(d.label)}</span></span><span class="legend-pct num" style="font-size:12.5px;white-space:nowrap;">${d.pct.toFixed(1)}<span class="pct-sign">%</span></span></div>`;
+    const textStyle = isSelected ? `color:${stepText};` : '';
+    return `<div class="legend-item" ${clickable ? `data-subtype-filter="${escapeHTML(d.label)}"` : ''} style="flex-direction:column;align-items:center;gap:2px;min-width:0;${btnStyle}"><span style="display:flex;align-items:center;gap:4px;"><span class="swatch" style="background:${isSelected ? 'var(--bg)' : rankBg};width:8px;height:8px;flex-shrink:0;"></span><span class="legend-name" style="font-size:12.5px;white-space:nowrap;${textStyle}">${escapeHTML(d.label)}</span></span><span class="legend-pct num" style="font-size:12.5px;white-space:nowrap;${textStyle}">${d.pct.toFixed(1)}<span class="pct-sign">%</span></span></div>`;
   }).join('');
   return `<div class="chart-box" style="grid-column:1/-1;max-width:800px;margin:0 auto 18px;">
     ${stackedBarSVG(data, 800, 22, 'accountType', sel)}
@@ -4332,9 +4361,10 @@ function accountTypeBarChartBlock(selectedTypes){
     if(clickable) typeIdx++;
     const rankBg = rankColor(d.label, i, data.length, 'accountType');
     const btnStyle = clickable
-      ? `cursor:pointer;border:1px solid ${isSelected ? stepBg : 'var(--border)'};border-radius:6px;padding:4px 6px;${isSelected ? `background:${stepBg};color:${stepText};` : ''}`
+      ? `cursor:pointer;border:1px solid ${isSelected ? stepBg : 'var(--border)'};border-radius:6px;padding:4px 6px;${isSelected ? `background:${stepBg};` : ''}`
       : 'padding:4px 6px;';
-    return `<div class="legend-item" ${clickable ? `data-accounttype-filter="${escapeHTML(d.label)}"` : ''} style="flex-direction:column;align-items:center;gap:2px;min-width:0;${btnStyle}"><span style="display:flex;align-items:center;gap:4px;"><span class="swatch" style="background:${isSelected ? 'var(--bg)' : rankBg};width:8px;height:8px;flex-shrink:0;"></span><span class="legend-name" style="font-size:12.5px;white-space:nowrap;">${escapeHTML(d.label)}</span></span><span class="legend-pct num" style="font-size:12.5px;white-space:nowrap;">${d.pct.toFixed(1)}<span class="pct-sign">%</span></span></div>`;
+    const textStyle = isSelected ? `color:${stepText};` : '';
+    return `<div class="legend-item" ${clickable ? `data-accounttype-filter="${escapeHTML(d.label)}"` : ''} style="flex-direction:column;align-items:center;gap:2px;min-width:0;${btnStyle}"><span style="display:flex;align-items:center;gap:4px;"><span class="swatch" style="background:${isSelected ? 'var(--bg)' : rankBg};width:8px;height:8px;flex-shrink:0;"></span><span class="legend-name" style="font-size:12.5px;white-space:nowrap;${textStyle}">${escapeHTML(d.label)}</span></span><span class="legend-pct num" style="font-size:12.5px;white-space:nowrap;${textStyle}">${d.pct.toFixed(1)}<span class="pct-sign">%</span></span></div>`;
   }).join('');
   return `<div class="chart-box" style="grid-column:1/-1;max-width:800px;margin:0 auto;">
     ${stackedBarSVG(data, 800, 22, 'accountType', sel)}
@@ -4712,7 +4742,7 @@ function renderPanel(){
         ${(sectorAccordionShowRegionBar = true, '')}
         <div style="grid-column:1/-1;">
           ${accountButtonsRowHtml(computeAccountBarData(holdingsWithType, state.accounts), totalAccountFilterSel)}
-          <div class="flush-bar-group" style="display:flex;flex-direction:column;max-width:800px;width:100%;margin:0 auto;">
+          <div style="display:flex;flex-direction:column;max-width:800px;width:100%;margin:0 auto;">
             ${accountBarOnlyHtml(computeAccountBarData(holdingsWithType, state.accounts), totalAccountFilterSel)}
             ${accountTypeBarChartBlock(selectedTypesFromAccountFilter(totalAccountFilterSel))}
           </div>
