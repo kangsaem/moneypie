@@ -3811,7 +3811,7 @@ function accountButtonsRowHtml(data, selectedIds){
     return `<button class="btn" data-account-filter="${escapeHTML(d.id)}" style="padding:4px 10px;font-size:12px;flex-shrink:0;${isSelected ? 'background:var(--accent);color:#111;' : ''}">${escapeHTML(d.label)}</button>`;
   }).join('');
   return `<div class="chart-box" style="grid-column:1/-1;max-width:800px;width:100%;margin:0 auto;box-sizing:border-box;">
-    <div style="display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px;margin-bottom:6px;justify-content:center;">${buttonsHtml}</div>
+    <div id="accountBtnSelector" style="display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px;margin-bottom:6px;justify-content:center;">${buttonsHtml}</div>
   </div>`;
 }
 
@@ -3831,7 +3831,7 @@ function accountBarChartBlock(holdingsWithAccId, accounts, selectedIds){
     return `<button class="btn" data-account-filter="${escapeHTML(d.id)}" style="padding:4px 10px;font-size:12px;flex-shrink:0;${isSelected ? 'background:var(--accent);color:#111;' : ''}">${escapeHTML(d.label)}</button>`;
   }).join('');
   return `<div class="chart-box" style="grid-column:1/-1;max-width:800px;width:100%;margin:0 auto;box-sizing:border-box;">
-    <div style="display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px;margin-bottom:6px;max-width:100%;justify-content:center;">${buttonsHtml}</div>
+    <div id="accountBtnSelector" style="display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px;margin-bottom:6px;max-width:100%;justify-content:center;">${buttonsHtml}</div>
     ${accountStackedBarSVG(data, 800, 11, selectedIds)}
   </div>`;
 }
@@ -4404,9 +4404,9 @@ function accountTypeBarChartBlock(selectedTypes){
     const textStyle = isSelected ? `color:${stepText};` : '';
     return `<div class="legend-item" ${clickable ? `data-accounttype-filter="${escapeHTML(d.label)}"` : ''} style="flex-direction:column;align-items:center;gap:2px;min-width:0;${btnStyle}"><span style="display:flex;align-items:center;gap:4px;"><span class="swatch" style="background:${isSelected ? 'var(--bg)' : rankBg};width:8px;height:8px;flex-shrink:0;"></span><span class="legend-name" style="font-size:12.5px;white-space:nowrap;${textStyle}">${escapeHTML(d.label)}</span></span><span class="legend-pct num" style="font-size:12.5px;white-space:nowrap;${textStyle}">${d.pct.toFixed(1)}<span class="pct-sign">%</span></span></div>`;
   }).join('');
-  return `<div class="chart-box" style="grid-column:1/-1;max-width:800px;margin:0 auto;">
+  return `<div class="chart-box" style="grid-column:1/-1;max-width:800px;width:100%;min-width:0;margin:0 auto;box-sizing:border-box;">
     ${stackedBarSVG(data, 800, 22, 'accountType', sel)}
-    <div class="legend" style="flex-direction:row;flex-wrap:nowrap;justify-content:center;gap:4px;overflow-x:auto;">${legendHtml}</div>
+    <div class="legend" style="flex-direction:row;flex-wrap:nowrap;justify-content:center;gap:4px;overflow-x:auto;min-width:0;">${legendHtml}</div>
   </div>`;
 }
 
@@ -4722,11 +4722,15 @@ function renderPanel(){
     });
     panel.querySelectorAll('[data-account-filter]').forEach(el => {
       el.addEventListener('click', () => {
+        const selectorEl = document.getElementById('accountBtnSelector');
+        const scrollPos = selectorEl ? selectorEl.scrollLeft : 0;
         const clicked = el.dataset.accountFilter;
         const newArr = accountFilterSel.includes(clicked) ? accountFilterSel.filter(id => id !== clicked) : [...accountFilterSel, clicked];
         if(isDomestic) state.domesticAccountFilter = newArr;
         else state.overseasAccountFilter = newArr;
         render();
+        const newSelectorEl = document.getElementById('accountBtnSelector');
+        if(newSelectorEl) newSelectorEl.scrollLeft = scrollPos;
       });
     });
     panel.querySelectorAll('[data-locked-region-toggle]').forEach(el => {
@@ -4817,11 +4821,15 @@ function renderPanel(){
     });
     panel.querySelectorAll('[data-account-filter]').forEach(el => {
       el.addEventListener('click', () => {
+        const selectorEl = document.getElementById('accountBtnSelector');
+        const scrollPos = selectorEl ? selectorEl.scrollLeft : 0;
         const clicked = el.dataset.accountFilter;
         totalAccountFilterSel = totalAccountFilterSel.includes(clicked)
           ? totalAccountFilterSel.filter(id => id !== clicked)
           : [...totalAccountFilterSel, clicked];
         render();
+        const newSelectorEl = document.getElementById('accountBtnSelector');
+        if(newSelectorEl) newSelectorEl.scrollLeft = scrollPos;
       });
     });
     const stockDetailBtn = document.getElementById('stock-detail-btn');
