@@ -2534,7 +2534,7 @@ function partialRingEndLabelSVG(fraction, cx, cy, radius, text, color){
   const x = cx + labelR * Math.cos(rad);
   const y = cy + labelR * Math.sin(rad);
   const rotateDeg = endAngleDeg + 90;
-  return `<text x="${x.toFixed(2)}" y="${y.toFixed(2)}" transform="rotate(${rotateDeg.toFixed(2)} ${x.toFixed(2)} ${y.toFixed(2)})" text-anchor="middle" dominant-baseline="middle" font-size="8" font-weight="700" fill="${color}">${escapeHTML(text)}</text>`;
+  return `<text x="${x.toFixed(2)}" y="${y.toFixed(2)}" transform="rotate(${rotateDeg.toFixed(2)} ${x.toFixed(2)} ${y.toFixed(2)})" text-anchor="start" dominant-baseline="middle" font-size="10" font-weight="700" fill="${color}">${escapeHTML(text)}</text>`;
 }
 
 function decorativeRingsSVG(ringSpecs, cx, cy, pieR, ringW){
@@ -2614,7 +2614,7 @@ function stockChartBlockSortable(holdings, allowRegion, extraRingSpecs, fallback
   // 그 바깥에 링들을 간격 없이 안쪽부터 순서대로 이어 붙인다. 전체 캔버스만 그만큼 넓어진다.
   const pieR = 74, ringW = 6;
   const hasPartialLabel = rings.some(r => r.partial && r.partial.amountLabel);
-  const outerSize = 2 * (pieR + rings.length * ringW + (hasPartialLabel ? 22 : 6));
+  const outerSize = 2 * (pieR + rings.length * ringW + (hasPartialLabel ? 34 : 6));
   const cx = outerSize/2, cy = outerSize/2;
   const pieInner = donutSVG(ordered, 160, 'stock').replace(/^<div class="donut-wrap">/, '').replace(/<\/div>$/, '');
   const sizeClass = rings.length >= 4 ? 'donut-wrap-xxl' : (rings.length >= 3 ? 'donut-wrap-xl' : (rings.length >= 2 ? 'donut-wrap-lg' : 'donut-wrap-md'));
