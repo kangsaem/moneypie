@@ -2552,7 +2552,7 @@ function duoRingSVG(usedFraction, usedColor, remainFraction, remainColor, cx, cy
   const remainDash = Math.max(0, Math.min(1, remainFraction)) * circumference;
   const transform = `translate(${2*cx},0) scale(-1,1) rotate(-90 ${cx} ${cy})`;
   const usedCircle = `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="${usedColor}" stroke-width="${strokeWidth}" stroke-dasharray="${usedDash.toFixed(2)} ${(circumference-usedDash).toFixed(2)}" stroke-dashoffset="0" transform="${transform}" data-ring="${ringName}"><title>${escapeHTML(usedLabel || '')} ${(usedFraction*100).toFixed(1)}%</title></circle>`;
-  const remainCircle = `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="${remainColor}" stroke-width="${strokeWidth}" stroke-dasharray="${remainDash.toFixed(2)} ${(circumference-remainDash).toFixed(2)}" stroke-dashoffset="${(-usedDash).toFixed(2)}" transform="${transform}" data-ring="${ringName}"><title>${escapeHTML(remainLabel || '')} ${(remainFraction*100).toFixed(1)}%</title></circle>`;
+  const remainCircle = `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="${remainColor}" stroke-width="${strokeWidth}" stroke-dasharray="${remainDash.toFixed(2)} ${(circumference-remainDash).toFixed(2)}" stroke-dashoffset="${(-usedDash).toFixed(2)}" opacity="0.5" transform="${transform}" data-ring="${ringName}"><title>${escapeHTML(remainLabel || '')} ${(remainFraction*100).toFixed(1)}%</title></circle>`;
   return usedCircle + remainCircle;
 }
 
@@ -4261,7 +4261,8 @@ function creditBarSVG(data, width, height){
   let x = 0, bars = '';
   data.forEach(d => {
     const w = (d.amount/total) * width;
-    bars += `<rect x="${x.toFixed(1)}" y="0" width="${Math.max(w,0).toFixed(1)}" height="${height}" fill="${d.color}"><title>${escapeHTML(d.label)}</title></rect>`;
+    const opacity = d.opacity != null ? d.opacity : 1;
+    bars += `<rect x="${x.toFixed(1)}" y="0" width="${Math.max(w,0).toFixed(1)}" height="${height}" fill="${d.color}" opacity="${opacity}"><title>${escapeHTML(d.label)}</title></rect>`;
     x += w;
   });
   let grid = '';
@@ -4320,7 +4321,7 @@ function creditGaugeChartBlock(showAmountOverlay){
   const remainPct = totalLimit ? (remain/totalLimit*100) : 0;
   const gaugeData = [
     { label:'마통사용', amount: totalUsed, color: CREDIT_USED_COLOR },
-    { label:'잔여한도', amount: remain, color: CREDIT_REMAIN_COLOR }
+    { label:'잔여한도', amount: remain, color: CREDIT_REMAIN_COLOR, opacity: 0.5 }
   ];
   const overlayHtml = showAmountOverlay ? `<div style="position:absolute;top:0;left:0;width:${usedPct.toFixed(2)}%;height:22px;display:flex;align-items:center;justify-content:flex-end;padding-right:6px;box-sizing:border-box;overflow:hidden;pointer-events:none;"><span style="color:#FBD9E4;font-size:15px;font-weight:500;white-space:nowrap;">${Math.floor(totalUsed/10000).toLocaleString()}</span></div>` : '';
   return `<div class="chart-box" style="grid-column:1/-1;max-width:800px;margin:0 auto;">
