@@ -550,8 +550,11 @@ async function refreshHoldingPrice(h){
     h.lastPrice = rate;
     return { symbol: h.symbol, price: rate, currency: h.currency, krwPrice: rate };
   }
-  // 국내종목(원화)은 네이버가 야후보다 정확도가 높아서 먼저 시도하고, 실패했을 때만 야후로 폴백한다.
-  if((h.region || 'domestic') !== 'overseas'){
+  // 실제 코스피/코스닥 상장 종목(h.listingRegion)만 네이버를 먼저 시도한다.
+  // h.region은 사용자가 투자목적으로 분류한 국내/해외 값이라(예: 국내상장 S&P500 ETF를 "해외"로 분류하는 경우),
+  // 이 값 대신 종목 검색 시점에 판별해둔 진짜 상장지역(listingRegion)을 기준으로 삼는다.
+  // listingRegion이 없는 기존 종목(이 기능 추가 전에 등록됨)은 안전하게 기존 야후 경로를 그대로 사용한다.
+  if(h.listingRegion && h.listingRegion !== 'overseas'){
     const naverResult = await fetchNaverStockPrice(h.symbol);
     if(naverResult && naverResult.price != null){
       h.lastPrice = naverResult.price;
@@ -738,12 +741,7 @@ async function fetchNaverIndex(naverCode){
 async function fetchNaverStockPrice(naverCode){
   const targetUrl = `https://polling.finance.naver.com/api/realtime/domestic/stock/${naverCode}?_=${Date.now()}`;
   let res;
-  try{
-    res = await fetchWithTimeout(targetUrl, { cache: 'no-store' }, 3000);
-    if(!res.ok) throw new Error('direct fetch failed');
-  }catch(e){
-    try{ res = await fetchViaProxy(targetUrl); }catch(e2){ return null; }
-  }
+  try{ res = await fetchViaProxy(targetUrl); }catch(e){ return null; }
   if(!res || !res.ok) return null;
   let json;
   try{ json = await res.json(); }catch(e){ return null; }
@@ -1984,6 +1982,7 @@ function addHolding(accId, name, group, amount, region, opts){
     if(opts.nationName) holding.nationName = opts.nationName;
     if(opts.lastPrice != null) holding.lastPrice = opts.lastPrice;
     if(opts.currency) holding.currency = opts.currency;
+    if(opts.listingRegion) holding.listingRegion = opts.listingRegion;
   }
   acc.holdings.push(holding);
   save(); render();
@@ -2116,7 +2115,7 @@ async function saveEditModal(){
   const name = document.getElementById('editName').value.trim();
   const group = document.getElementById('editGroup').value.trim();
   const region = document.getElementById('editRegion').value;
-  let amount, quantity = null, symbol = null, yahooSymbol = null, fallbackText = null, nationName = null, lastPrice = null, priceCurrency = null, isCashCurrency = false;
+  let amount, quantity = null, symbol = null, yahooSymbol = null, fallbackText = null, nationName = null, lastPrice = null, priceCurrency = null, isCashCurrency = false, listingRegion = null;
   if(editMode === 'qty' && editResolvedCode && editResolvedCode.isCashCurrency){
     quantity = parseFloat(document.getElementById('editQty').value);
     if(isNaN(quantity)){ alert('금액을 확인해주세요.'); return; }
@@ -2140,12 +2139,15 @@ async function saveEditModal(){
     amount = Math.round(quantity * result.krwPrice);
     lastPrice = result.price;
     priceCurrency = result.currency;
+    // 네이버 검색 시점에 판별된 진짜 상장지역(코스피/코스닥 여부)을 저장해둔다.
+    // 이후 시세 조회시 이 값으로 네이버 우선 조회 여부를 정확히 판단할 수 있다.
+    listingRegion = editResolvedCode.region;
   } else {
     amount = parseFloat(document.getElementById('editAmount').value);
     if(!name || isNaN(amount)){ alert('종목명과 평가액을 확인해주세요.'); return; }
   }
   if(isNew){
-    const opts = editMode === 'qty' ? { quantity, symbol: isCashCurrency ? priceCurrency : symbol, yahooSymbol, fallbackText, nationName, lastPrice, currency: priceCurrency, isCashCurrency } : null;
+    const opts = editMode === 'qty' ? { quantity, symbol: isCashCurrency ? priceCurrency : symbol, yahooSymbol, fallbackText, nationName, lastPrice, currency: priceCurrency, isCashCurrency, listingRegion } : null;
     addHolding(acc.id, name, group, amount, region, opts);
     closeEditModal();
     return;
@@ -2162,8 +2164,8 @@ async function saveEditModal(){
     h.group = (group && String(group).trim()) ? String(group).trim() : '?';
     h.region = region;
   }
-  if(editMode === 'qty'){ h.quantity = quantity; h.symbol = isCashCurrency ? priceCurrency : symbol; h.yahooSymbol = yahooSymbol; h.fallbackText = fallbackText; h.nationName = nationName; h.lastPrice = lastPrice; h.currency = priceCurrency; }
-  else { delete h.quantity; delete h.symbol; delete h.yahooSymbol; delete h.fallbackText; }
+  if(editMode === 'qty'){ h.quantity = quantity; h.symbol = isCashCurrency ? priceCurrency : symbol; h.yahooSymbol = yahooSymbol; h.fallbackText = fallbackText; h.nationName = nationName; h.lastPrice = lastPrice; h.currency = priceCurrency; if(listingRegion) h.listingRegion = listingRegion; }
+  else { delete h.quantity; delete h.symbol; delete h.yahooSymbol; delete h.fallbackText; delete h.listingRegion; }
   save();
   closeEditModal();
   render();
@@ -2411,7 +2413,8 @@ function computeStockDataWithMeta(holdings, fallbackAccId){
       accId: items[0]._accId || fallbackAccId,
       holdId: items[0].id,
       quantity: items[0].quantity,
-      symbol: items[0].symbol
+      symbol: items[0].symbol,
+      listingRegion: items[0].listingRegion
     }))
     .orderBy(['amount'], ['desc'])
     .value();
@@ -2651,10 +2654,12 @@ function stockLegendWithDividers(data, sortMode){
     const rankCount = d.rankCount !== undefined ? d.rankCount : data.length;
     const color = rankColor(d.label, rank, rankCount, 'stock');
     const isCashLabel = isCashLikeLabel(d.label);
-    // 계좌탭 목록과 동일한 색상 규칙: 개수(수량)로 입력된 종목은 이름·비중 모두 흰색, 평가액으로만 입력된 종목은 이름·비중 모두 회색
+    // 계좌탭 목록과 동일한 색상 규칙: 평가액입력=회색, 개수입력(상장지역 미확인)=흰색, 개수입력(상장지역 확인됨)=연두
     const isQtyMode = !isCashLabel && d.quantity != null && d.symbol;
-    const nameStyle = isCashLabel ? 'color:#F0DA8C;font-weight:700;' : (isQtyMode ? 'color:#FFFFFF;' : (d.quantity == null ? 'color:var(--text-dim);' : ''));
-    const pctStyle = isCashLabel ? 'color:#F0DA8C;font-weight:700;' : (isQtyMode ? 'color:#FFFFFF;' : (d.quantity == null ? 'color:var(--text-dim);' : ''));
+    const hasListingRegion = isQtyMode && !!d.listingRegion;
+    const qtyStyle = hasListingRegion ? 'color:#D4FF3D;' : 'color:#FFFFFF;';
+    const nameStyle = isCashLabel ? 'color:#F0DA8C;font-weight:700;' : (isQtyMode ? qtyStyle : (d.quantity == null ? 'color:var(--text-dim);' : ''));
+    const pctStyle = isCashLabel ? 'color:#F0DA8C;font-weight:700;' : (isQtyMode ? qtyStyle : (d.quantity == null ? 'color:var(--text-dim);' : ''));
     // 계좌탭과 동일하게 개수가 입력된(또는 수량 정보가 있는) 종목만 클릭해 가격변화 아코디언을 연다.
     const canOpenStockHistory = !isCashLabel && d.quantity != null && d.accId && d.holdId;
     const clickAttrs = canOpenStockHistory ? ` data-stock-history-name="${escapeHTML(d.holdId)}" data-stock-history-acc="${escapeHTML(d.accId)}" style="cursor:pointer;${nameStyle}"` : ` style="${nameStyle}"`;
@@ -3327,8 +3332,9 @@ async function resolveHoldingHistorySymbol(h){
       const resolved = await resolveYahooPrice(h.symbol, h.region, h.fallbackText, h.nationName);
       if(resolved && resolved.symbol){
         h.yahooSymbol = resolved.symbol;
-        h.lastPrice = resolved.price;
-        h.currency = resolved.currency;
+        // 현재가(h.lastPrice)/통화는 여기서 건드리지 않는다 - 국내종목은 refreshHoldingPrice가
+        // 네이버를 우선 사용해 갱신하므로, 차트용 심볼을 찾는 이 함수가 야후 가격으로 덮어쓰면
+        // 애써 받아온 정확한 현재가가 차트를 여는 순간 야후 값으로 되돌아가버리는 문제가 생긴다.
         resolvedSymbol = resolved.symbol;
       }
     }
@@ -3343,8 +3349,6 @@ async function resolveHoldingHistorySymbol(h){
           const resolved = await resolveYahooPrice(h.symbol, h.region, h.name, h.nationName);
           if(resolved && resolved.symbol){
             h.yahooSymbol = resolved.symbol;
-            h.lastPrice = resolved.price;
-            h.currency = resolved.currency;
             resolvedSymbol = resolved.symbol;
           }
         }
@@ -3549,11 +3553,13 @@ function holdingsTable(holdings, accId, editable, showRegion, alignMode, mergeDu
     const displayName = isCash ? (h.region === 'overseas' ? '외화' : '원화') : escapeHTML(h.name);
     const cashColor = isCash ? 'color:#F0DA8C;font-weight:700;' : '';
     const isQtyMode = h.quantity != null && h.symbol;
+    const hasListingRegion = isQtyMode && !!h.listingRegion;
     const isFxAccordionMode = isCash && h.region === 'overseas' && h.currency && h.currency !== 'KRW' && h.quantity != null;
     const canOpenStockHistory = !isCash ? (h.quantity != null) : isFxAccordionMode;
     const qtyGreen = '#D4FF3D';
+    const qtyWhite = '#FFFFFF';
     const nameColor = isCash ? cashColor : (isQtyMode ? '' : 'color:var(--text-dim);');
-    const qtyAmountColor = isQtyMode ? `color:${qtyGreen};` : (isCash ? '' : 'color:var(--text-dim);');
+    const qtyAmountColor = isQtyMode ? `color:${hasListingRegion ? qtyGreen : qtyWhite};` : (isCash ? '' : 'color:var(--text-dim);');
     return `
     <div style="display:flex;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:14px;">
       <div style="flex:0 1 170px;min-width:95px;text-align:left;${nameColor}${sortable && canOpenStockHistory ? 'cursor:pointer;' : ''}" ${sortable && canOpenStockHistory ? `data-stock-history-name="${h.id}" data-stock-history-acc="${accId}"` : ''}>${displayName}</div>
