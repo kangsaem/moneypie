@@ -439,9 +439,8 @@ const CASH_OVERSEAS = '#ADAEB4';
 const CREDIT_USED_COLOR = '#B85450';
 const CREDIT_REMAIN_COLOR = '#7E7F84';
 
-let state = { accounts: [], activeId: null, snapshots: [], domesticSubType: [], overseasSubType: [], domesticAccountFilter: [], overseasAccountFilter: [], historyRange: '6', creditLines: [] };
+let state = { accounts: [], activeId: null, snapshots: [], domesticAccountFilter: [], overseasAccountFilter: [], historyRange: '6', creditLines: [] };
 let historyAccountFilter = [];
-let historyAccountTypeFilter = [];
 
 const MARKET_SYMBOLS = [
   { key:'kospi', symbol:'^KS11', name:'코스피' },
@@ -1032,6 +1031,29 @@ async function loadMarketData(forceRefresh){
   try{ localStorage.setItem(MARKET_CACHE_KEY, JSON.stringify({ timestamp: Date.now(), data: dataMap })); }catch(e){}
 }
 const ACCOUNT_TYPES = ['연금','DC','IRP','ISA','직투'];
+
+// 계좌유형 버튼과 계좌 버튼을 하나의 계좌 선택 배열로 연동하기 위한 헬퍼.
+// 계좌유형 버튼을 누르면 그 유형에 속한 계좌들이 계좌 선택 배열에 토글되어(모두 선택->모두 해제, 일부만 선택->모두 선택)
+// 계좌 버튼도 같이 활성화된다.
+function accountsOfType(type){
+  return state.accounts.filter(a => (a.accountType||'직투') === type).map(a => a.id);
+}
+function toggleTypeInAccountFilter(filterArr, type){
+  const ids = accountsOfType(type);
+  if(ids.length === 0) return filterArr;
+  const allSelected = ids.every(id => filterArr.includes(id));
+  if(allSelected) return filterArr.filter(id => !ids.includes(id));
+  const merged = new Set(filterArr);
+  ids.forEach(id => merged.add(id));
+  return Array.from(merged);
+}
+function isTypeFullySelected(filterArr, type){
+  const ids = accountsOfType(type);
+  return ids.length > 0 && ids.every(id => filterArr.includes(id));
+}
+function selectedTypesFromAccountFilter(filterArr){
+  return ACCOUNT_TYPES.filter(t => isTypeFullySelected(filterArr, t));
+}
 
 function hexToRgb(hex){
   const n = parseInt(hex.slice(1), 16);
@@ -2522,18 +2544,32 @@ function partialRingSVG(fraction, color, cx, cy, radius, strokeWidth, ringName, 
   return `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="${color}" stroke-width="${strokeWidth}" stroke-dasharray="${dash.toFixed(2)} ${gap.toFixed(2)}" stroke-dashoffset="0" transform="translate(${2*cx},0) scale(-1,1) rotate(-90 ${cx} ${cy})" data-ring="${ringName}"><title>${escapeHTML(tooltipLabel || '')} ${(fraction*100).toFixed(1)}%</title></circle>`;
 }
 
-// 부분 링(마통사용 등)의 반시계 방향 끝단에 작은 라벨을 표시.
-// partialRingSVG의 원(circle)은 12시 방향(top)에서 시작해 반시계 방향으로 fraction*360도만큼 그려지므로,
-// 끝단 각도 = -90 - fraction*360 (도, 표준 화면좌표: -90이 12시, 각도가 커질수록 시계방향).
-// 라벨은 그 각도로 뻗어나가는 시계바늘 끝에 매달린 것처럼, 반지름 방향과 나란히(수직으로) 세워서 표시한다.
+// 마통 링을 사용/잔여 두 구간이 이어진 하나의 완전한 원으로 표현.
+// 12시 방향(top)에서 시작해 반시계 방향으로 사용 구간을 먼저 그리고, 이어서 잔여 구간을 그 끝에서부터 계속 이어 그린다.
+function duoRingSVG(usedFraction, usedColor, remainFraction, remainColor, cx, cy, radius, strokeWidth, ringName, usedLabel, remainLabel){
+  const circumference = 2 * Math.PI * radius;
+  const usedDash = Math.max(0, Math.min(1, usedFraction)) * circumference;
+  const remainDash = Math.max(0, Math.min(1, remainFraction)) * circumference;
+  const transform = `translate(${2*cx},0) scale(-1,1) rotate(-90 ${cx} ${cy})`;
+  const usedCircle = `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="${usedColor}" stroke-width="${strokeWidth}" stroke-dasharray="${usedDash.toFixed(2)} ${(circumference-usedDash).toFixed(2)}" stroke-dashoffset="0" transform="${transform}" data-ring="${ringName}"><title>${escapeHTML(usedLabel || '')} ${(usedFraction*100).toFixed(1)}%</title></circle>`;
+  const remainCircle = `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="${remainColor}" stroke-width="${strokeWidth}" stroke-dasharray="${remainDash.toFixed(2)} ${(circumference-remainDash).toFixed(2)}" stroke-dashoffset="${(-usedDash).toFixed(2)}" transform="${transform}" data-ring="${ringName}"><title>${escapeHTML(remainLabel || '')} ${(remainFraction*100).toFixed(1)}%</title></circle>`;
+  return usedCircle + remainCircle;
+}
+
+// 부분 링(마통사용 등)의 중간 지점에 작은 라벨을 표시.
+// 링은 12시 방향(top)에서 시작해 반시계 방향으로 그려지므로, 중간 각도 = -90 - (fraction*360)/2 (도).
+// 라벨은 그 각도로 뻗어나가는 시계바늘에 매달린 것처럼, 반지름 방향과 나란히(수직으로) 세워서 표시한다.
+// 다만 반시계방향으로 90~270도 구간(원 아래쪽 절반)에 위치하면 그대로 두면 글자가 거꾸로 보이므로 180도 뒤집어 준다.
 function partialRingEndLabelSVG(fraction, cx, cy, radius, text, color){
   if(!text || fraction <= 0) return '';
-  const midAngleDeg = -90 - (Math.min(1, Math.max(0, fraction)) * 360) / 2;
+  const ccwDeg = (Math.min(1, Math.max(0, fraction)) * 360) / 2;
+  const midAngleDeg = -90 - ccwDeg;
   const rad = midAngleDeg * Math.PI / 180;
   const labelR = radius + 9;
   const x = cx + labelR * Math.cos(rad);
   const y = cy + labelR * Math.sin(rad);
-  const rotateDeg = midAngleDeg + 90;
+  let rotateDeg = midAngleDeg + 90;
+  if(ccwDeg > 90 && ccwDeg < 270) rotateDeg += 180;
   return `<text x="${x.toFixed(2)}" y="${y.toFixed(2)}" transform="rotate(${rotateDeg.toFixed(2)} ${x.toFixed(2)} ${y.toFixed(2)})" text-anchor="middle" dominant-baseline="middle" font-size="10" font-weight="700" fill="${color}">${escapeHTML(text)}</text>`;
 }
 
@@ -2542,8 +2578,11 @@ function decorativeRingsSVG(ringSpecs, cx, cy, pieR, ringW){
   return ringSpecs.map((spec, i) => {
     const r = pieR + ringW/2 + i*ringW;
     if(spec.partial){
-      const ringSvg = partialRingSVG(spec.partial.fraction, spec.partial.color, cx, cy, r, ringW, spec.name, spec.partial.label);
-      const labelSvg = partialRingEndLabelSVG(spec.partial.fraction, cx, cy, r, spec.partial.amountLabel, spec.partial.color);
+      const p = spec.partial;
+      const ringSvg = (p.remainFraction != null)
+        ? duoRingSVG(p.fraction, p.color, p.remainFraction, p.remainColor, cx, cy, r, ringW, spec.name, p.label, p.remainLabel)
+        : partialRingSVG(p.fraction, p.color, cx, cy, r, ringW, spec.name, p.label);
+      const labelSvg = partialRingEndLabelSVG(p.fraction, cx, cy, r, p.amountLabel, p.color);
       return ringSvg + labelSvg;
     }
     const ordered = spec.preOrdered ? spec.data : reorderCashFirst(spec.data);
@@ -4063,7 +4102,7 @@ function renderTabs(){
   tabs.innerHTML = html;
 
   tabs.querySelectorAll('[data-tab]').forEach(el => {
-    el.addEventListener('click', () => { state.activeId = el.dataset.tab; accountTableSortMode = null; stockLegendSortMode = 'amount'; historyAccountFilter = []; historyAccountTypeFilter = []; totalAccountTypeFilter = []; totalAccountFilterSel = []; render(); });
+    el.addEventListener('click', () => { state.activeId = el.dataset.tab; accountTableSortMode = null; stockLegendSortMode = 'amount'; historyAccountFilter = []; totalAccountFilterSel = []; render(); });
   });
   document.getElementById('addAccountBtn').addEventListener('click', addAccount);
 }
@@ -4092,7 +4131,7 @@ function renderHistoryPanel(){
   const range = state.historyRange;
   const accountFilteredSnapshots = historyAccountFilter.length > 0
     ? buildAccountFilteredSnapshots(sorted, historyAccountFilter)
-    : (historyAccountTypeFilter.length > 0 ? buildAccountTypeFilteredSnapshots(sorted, historyAccountTypeFilter) : sorted);
+    : sorted;
   const filtered = range === 'all' ? accountFilteredSnapshots : accountFilteredSnapshots.slice(-parseInt(range, 10));
 
   const points = filtered.map(s => ({
@@ -4112,12 +4151,13 @@ function renderHistoryPanel(){
     value: _.sumBy(s.creditLines || [], 'used')
   }));
 
+  const historySelectedTypes = selectedTypesFromAccountFilter(historyAccountFilter);
   const accountSelector = `
     <div id="historyAccSelector" style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:6px;">
       ${state.accounts.map(a => `<button class="btn" data-history-acc="${a.id}" style="padding:4px 10px;font-size:12px;flex-shrink:0;${historyAccountFilter.includes(a.id) ? 'background:var(--accent);color:#111;' : ''}">${escapeHTML(a.name)}</button>`).join('')}
     </div>
     <div id="historyAccTypeSelector" style="display:flex;gap:6px;margin-bottom:10px;">
-      ${['직투','연금','DC','IRP','ISA'].map(t => `<button class="btn" data-history-acc-type="${t}" style="padding:4px 10px;font-size:12px;flex-shrink:0;min-width:52px;text-align:center;${historyAccountTypeFilter.includes(t) ? 'background:var(--accent);color:#111;' : ''}">${t}</button>`).join('')}
+      ${['직투','연금','DC','IRP','ISA'].map(t => `<button class="btn" data-history-acc-type="${t}" style="padding:4px 10px;font-size:12px;flex-shrink:0;min-width:52px;text-align:center;${historySelectedTypes.includes(t) ? 'background:var(--accent);color:#111;' : ''}">${t}</button>`).join('')}
     </div>
   `;
 
@@ -4130,7 +4170,7 @@ function renderHistoryPanel(){
     </div>
   `;
 
-  const hasCreditData = historyAccountFilter.length === 0 && historyAccountTypeFilter.length === 0 && creditUsedPoints.some(p => p.value > 0);
+  const hasCreditData = historyAccountFilter.length === 0 && creditUsedPoints.some(p => p.value > 0);
   const domesticAllZero = domesticPoints.every(p => Math.abs(p.value) < 1);
   const overseasAllZero = overseasPoints.every(p => Math.abs(p.value) < 1);
   const showRegionLines = !domesticAllZero && !overseasAllZero;
@@ -4162,7 +4202,6 @@ function renderHistoryPanel(){
       historyAccountFilter = historyAccountFilter.includes(clickedId)
         ? historyAccountFilter.filter(id => id !== clickedId)
         : [...historyAccountFilter, clickedId];
-      historyAccountTypeFilter = [];
       openTrendRowId = null;
       openTrendSeriesPrefix = null;
       openTrendIdx = null;
@@ -4175,10 +4214,7 @@ function renderHistoryPanel(){
   document.querySelectorAll('[data-history-acc-type]').forEach(btn => {
     btn.addEventListener('click', () => {
       const clickedType = btn.dataset.historyAccType;
-      historyAccountTypeFilter = historyAccountTypeFilter.includes(clickedType)
-        ? historyAccountTypeFilter.filter(t => t !== clickedType)
-        : [...historyAccountTypeFilter, clickedType];
-      historyAccountFilter = [];
+      historyAccountFilter = toggleTypeInAccountFilter(historyAccountFilter, clickedType);
       openTrendRowId = null;
       openTrendSeriesPrefix = null;
       openTrendIdx = null;
@@ -4236,7 +4272,6 @@ function creditBarSVG(data, width, height){
   return `<svg width="100%" height="${height}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" style="display:block;border-radius:4px;overflow:hidden;">${bars}${grid}</svg>`;
 }
 
-let totalAccountTypeFilter = [];
 let totalAccountFilterSel = [];
 function subTypeBarBlock(holdingsWithType, selectedTypes){
   const sel = selectedTypes || [];
@@ -4520,13 +4555,10 @@ function renderPanel(){
     const region = state.activeId === '__domestic__' ? 'domestic' : 'overseas';
     const label = region === 'domestic' ? '국내' : '해외';
     const isDomestic = region === 'domestic';
-    const subType = isDomestic ? state.domesticSubType : state.overseasSubType;
     const accountFilterSel = isDomestic ? state.domesticAccountFilter : state.overseasAccountFilter;
     const accountsInScope = accountFilterSel.length > 0
       ? state.accounts.filter(a => accountFilterSel.includes(a.id))
-      : (subType.length > 0
-        ? state.accounts.filter(a => subType.includes(a.accountType||'직투'))
-        : state.accounts);
+      : state.accounts;
     const holdings = _.flatMap(accountsInScope, a => a.holdings.map(h => ({ ...h, _accId: a.id }))).filter(h => (h.region||'domestic') === region);
     const holdingsInScopeAllRegions = _.flatMap(accountsInScope, a => a.holdings);
     const byStock = computeWeights(holdings, 'name');
@@ -4535,12 +4567,12 @@ function renderPanel(){
 
     const regionHoldingsWithType = _.flatMap(state.accounts, a => a.holdings.filter(h => (h.region||'domestic') === region).map(h => ({ ...h, accountTypeLabel: a.accountType || '직투', _accId: a.id })));
     const accountBarHtml = accountBarChartBlock(regionHoldingsWithType, state.accounts, accountFilterSel);
-    const subTypeBarHtml = subTypeBarBlock(regionHoldingsWithType, subType);
+    const subTypeBarHtml = subTypeBarBlock(regionHoldingsWithType, selectedTypesFromAccountFilter(accountFilterSel));
 
     const byAccountType = computeWeights(regionHoldingsWithType, 'accountTypeLabel');
     const cashTotal = _.sumBy(holdings.filter(isCashHolding), 'amount');
     const cashPct = total ? (cashTotal/total*100) : 0;
-    const noFilterActive = subType.length === 0 && accountFilterSel.length === 0;
+    const noFilterActive = accountFilterSel.length === 0;
 
     panel.innerHTML = `
       <div style="position:relative;">
@@ -4588,9 +4620,9 @@ function renderPanel(){
     panel.querySelectorAll('[data-subtype-filter]').forEach(el => {
       el.addEventListener('click', () => {
         const clicked = el.dataset.subtypeFilter;
-        const newArr = subType.includes(clicked) ? subType.filter(t => t !== clicked) : [...subType, clicked];
-        if(isDomestic){ state.domesticSubType = newArr; state.domesticAccountFilter = []; }
-        else { state.overseasSubType = newArr; state.overseasAccountFilter = []; }
+        const newArr = toggleTypeInAccountFilter(accountFilterSel, clicked);
+        if(isDomestic) state.domesticAccountFilter = newArr;
+        else state.overseasAccountFilter = newArr;
         render();
       });
     });
@@ -4598,8 +4630,8 @@ function renderPanel(){
       el.addEventListener('click', () => {
         const clicked = el.dataset.accountFilter;
         const newArr = accountFilterSel.includes(clicked) ? accountFilterSel.filter(id => id !== clicked) : [...accountFilterSel, clicked];
-        if(isDomestic){ state.domesticAccountFilter = newArr; state.domesticSubType = []; }
-        else { state.overseasAccountFilter = newArr; state.overseasSubType = []; }
+        if(isDomestic) state.domesticAccountFilter = newArr;
+        else state.overseasAccountFilter = newArr;
         render();
       });
     });
@@ -4608,8 +4640,9 @@ function renderPanel(){
     });
     panel.querySelectorAll('[data-subtype-jump]').forEach(el => {
       el.addEventListener('click', () => {
-        if(isDomestic){ state.domesticSubType = [el.dataset.subtypeJump]; state.domesticAccountFilter = []; }
-        else { state.overseasSubType = [el.dataset.subtypeJump]; state.overseasAccountFilter = []; }
+        const newArr = toggleTypeInAccountFilter(accountFilterSel, el.dataset.subtypeJump);
+        if(isDomestic) state.domesticAccountFilter = newArr;
+        else state.overseasAccountFilter = newArr;
         render();
       });
     });
@@ -4621,13 +4654,14 @@ function renderPanel(){
     const holdingsWithType = _.flatMap(state.accounts, a => a.holdings.map(h => ({ ...h, accountTypeLabel: a.accountType || '직투', _accId: a.id })));
     const scopedHoldings = totalAccountFilterSel.length > 0
       ? holdingsWithType.filter(h => totalAccountFilterSel.includes(h._accId))
-      : (totalAccountTypeFilter.length > 0 ? holdingsWithType.filter(h => totalAccountTypeFilter.includes(h.accountTypeLabel)) : holdingsWithType);
+      : holdingsWithType;
     const byStock = computeWeights(scopedHoldings, 'name');
     const byGroup = computeWeights(scopedHoldings, 'group');
     const grandTotal = _.sumBy(scopedHoldings, 'amount');
 
     const byRegion = computeWeights(scopedHoldings, regionLabelFor);
     const totalCreditUsed = _.sumBy(state.creditLines, 'used');
+    const totalCreditLimit = _.sumBy(state.creditLines, 'limit');
     const currentLabel = currentMonthLabel();
     const thisMonthSnap = state.snapshots.find(s => s.label === currentLabel) || (state.snapshots.length ? state.snapshots[state.snapshots.length-1] : null);
     const cashTotalAll = _.sumBy(scopedHoldings.filter(isCashHolding), 'amount');
@@ -4653,9 +4687,8 @@ function renderPanel(){
         <div style="grid-column:1/-1;">
           ${accountButtonsRowHtml(computeAccountBarData(holdingsWithType, state.accounts), totalAccountFilterSel)}
           <div class="flush-bar-group" style="display:flex;flex-direction:column;">
-            ${state.creditLines.length > 0 ? creditGaugeChartBlock(true) : ''}
             ${accountBarOnlyHtml(computeAccountBarData(holdingsWithType, state.accounts), totalAccountFilterSel)}
-            ${accountTypeBarChartBlock(totalAccountTypeFilter)}
+            ${accountTypeBarChartBlock(selectedTypesFromAccountFilter(totalAccountFilterSel))}
           </div>
         </div>
         ${sectorChartBlock(scopedHoldings)}
@@ -4664,7 +4697,15 @@ function renderPanel(){
           { data: computeWeights(scopedHoldings, 'group'), type: 'group', name: 'decorative-sector' },
           { data: regionQuadRingData(scopedHoldings), type: 'region', name: 'decorative-region', preOrdered: true },
           { data: computeWeights(scopedHoldings, 'accountTypeLabel'), type: 'accountType', name: 'decorative-accounttype', opacity: 0.8 },
-          ...(state.creditLines.length > 0 && grandTotal > 0 ? [{ partial: { fraction: totalCreditUsed / grandTotal, color: '#B85450', label: '마통사용', amountLabel: `${Math.floor(totalCreditUsed/10000).toLocaleString()}` }, name: 'decorative-credit' }] : [])
+          ...(state.creditLines.length > 0 && grandTotal > 0 ? [{ partial: {
+            fraction: totalCreditUsed / grandTotal,
+            color: '#B85450',
+            label: '마통사용',
+            remainFraction: Math.max(totalCreditLimit - totalCreditUsed, 0) / grandTotal,
+            remainColor: CREDIT_REMAIN_COLOR,
+            remainLabel: '마통잔여',
+            amountLabel: `${Math.floor(totalCreditUsed/10000).toLocaleString()}`
+          }, name: 'decorative-credit' }] : [])
         ])}
         ${stockDetailButtonBlock(scopedHoldings)}
       </div>
@@ -4677,10 +4718,7 @@ function renderPanel(){
     panel.querySelectorAll('[data-accounttype-filter]').forEach(el => {
       el.addEventListener('click', () => {
         const clicked = el.dataset.accounttypeFilter;
-        totalAccountTypeFilter = totalAccountTypeFilter.includes(clicked)
-          ? totalAccountTypeFilter.filter(t => t !== clicked)
-          : [...totalAccountTypeFilter, clicked];
-        totalAccountFilterSel = [];
+        totalAccountFilterSel = toggleTypeInAccountFilter(totalAccountFilterSel, clicked);
         render();
       });
     });
@@ -4690,7 +4728,6 @@ function renderPanel(){
         totalAccountFilterSel = totalAccountFilterSel.includes(clicked)
           ? totalAccountFilterSel.filter(id => id !== clicked)
           : [...totalAccountFilterSel, clicked];
-        totalAccountTypeFilter = [];
         render();
       });
     });
