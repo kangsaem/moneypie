@@ -437,7 +437,7 @@ const ACCOUNT_BAR_COLOR_B = '#9CAAD4';
 const CASH_COLOR = '#9A9BA1';
 const CASH_OVERSEAS = '#ADAEB4';
 const CREDIT_USED_COLOR = '#B85450';
-const CREDIT_REMAIN_COLOR = '#000000';
+const CREDIT_REMAIN_COLOR = '#1E1F22';
 
 let state = { accounts: [], activeId: null, snapshots: [], domesticSubType: [], overseasSubType: [], domesticAccountFilter: [], overseasAccountFilter: [], historyRange: '6', creditLines: [] };
 let historyAccountFilter = [];
@@ -4609,8 +4609,8 @@ function renderPanel(){
       <div class="charts">
         ${(sectorAccordionShowRegionBar = true, '')}
         <div class="flush-bar-group" style="grid-column:1/-1;display:flex;flex-direction:column;">
-          ${state.creditLines.length > 0 ? creditGaugeChartBlock(true) : ''}
           ${accountBarChartBlock(holdingsWithType, state.accounts, totalAccountFilterSel)}
+          ${state.creditLines.length > 0 ? creditGaugeChartBlock(true) : ''}
           ${accountTypeBarChartBlock(totalAccountTypeFilter)}
         </div>
         ${sectorChartBlock(scopedHoldings)}
