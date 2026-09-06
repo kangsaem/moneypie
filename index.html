@@ -566,6 +566,7 @@ async function refreshHoldingPrice(h){
     if(naverResult && naverResult.price != null){
       h.lastPrice = naverResult.price;
       h.currency = 'KRW';
+      if(naverResult.changePct != null) h.lastChangePct = naverResult.changePct;
       return { symbol: h.symbol, price: naverResult.price, currency: 'KRW', krwPrice: naverResult.price };
     }
   }
@@ -601,13 +602,18 @@ function syncQuantityHoldingsAmounts(){
           h.amount = Math.round(h.quantity * rate);
           h.lastPrice = rate;
         }
-      } else if(h.quantity != null && h.symbol && h.yahooSymbol){
+      } else if(h.quantity != null && h.symbol && h.yahooSymbol && !(h.listingRegion && h.listingRegion !== 'overseas')){
+        // 네이버로 우선 조회되는(listingRegion이 국내로 확인된) 종목은 이미 refreshHoldingPrice에서
+        // 정확한 값으로 h.lastPrice를 설정했으므로, 여기서 (있을 수도 있는 오래된) 야후 캐시로 덮어쓰지 않는다.
         const cached = holdingPriceCache[h.yahooSymbol];
         if(cached && cached.price != null){
           h.amount = Math.round(h.quantity * krwPrice(cached.price, cached.currency));
           h.lastPrice = cached.price;
           h.currency = cached.currency;
         }
+      } else if(h.quantity != null && h.symbol && h.listingRegion && h.listingRegion !== 'overseas' && h.lastPrice != null){
+        // 네이버 기준 가격은 항상 원화이므로 amount만 재계산(가격/통화는 그대로 유지)
+        h.amount = Math.round(h.quantity * h.lastPrice);
       }
     });
   });
@@ -756,7 +762,8 @@ async function fetchNaverStockPrice(naverCode){
   if(!row) return null;
   const price = parseFloat(String(row.closePrice).replace(/,/g, ''));
   if(!isFinite(price) || price <= 0) return null;
-  return { price, currency: 'KRW' };
+  const changePct = parseFloat(String(row.fluctuationsRatio).replace(/,/g, ''));
+  return { price, currency: 'KRW', changePct: isFinite(changePct) ? changePct : null };
 }
 function koreanMarketTimesForToday(){
   const kstMs = Date.now() + 9*60*60*1000;
@@ -1204,6 +1211,8 @@ function normalizeAccounts(accounts){
         if(h.nationName) holding.nationName = h.nationName;
         if(h.lastPrice != null) holding.lastPrice = h.lastPrice;
         if(h.currency) holding.currency = h.currency;
+        if(h.listingRegion) holding.listingRegion = h.listingRegion;
+        if(h.lastChangePct != null) holding.lastChangePct = h.lastChangePct;
       }
       return holding;
     })
@@ -1300,7 +1309,7 @@ function exportData(){
 }
 
 function exportXLSX(){
-  const holdingRows = [['계좌명','계좌유형','종목','섹터','지역','평가액','주식수','심볼','국가','1주가격','통화','야후심볼','원본검색어','계좌ID']];
+  const holdingRows = [['계좌명','계좌유형','종목','섹터','지역','평가액','주식수','심볼','국가','1주가격','통화','야후심볼','원본검색어','계좌ID','상장지역']];
   state.accounts.forEach(a => {
     a.holdings.forEach(h => {
       const name = isCashHolding(h) ? (h.region === 'overseas' ? '외화' : '원화') : h.name;
@@ -1318,7 +1327,8 @@ function exportXLSX(){
         h.currency || '',
         h.yahooSymbol || '',
         h.fallbackText || '',
-        a.id
+        a.id,
+        h.listingRegion || ''
       ]);
     });
   });
@@ -1354,7 +1364,7 @@ function exportXLSX(){
     snapshotRows.push([fullMonthLabel(s.label), total, domestic, overseas, creditUsed, s.memo || '']);
   });
 
-  const snapshotDetailRows = [['월','계좌명','계좌유형','종목','섹터','지역','평가액','주식수','심볼','국가','1주가격','통화','야후심볼','원본검색어','계좌ID']];
+  const snapshotDetailRows = [['월','계좌명','계좌유형','종목','섹터','지역','평가액','주식수','심볼','국가','1주가격','통화','야후심볼','원본검색어','계좌ID','상장지역']];
   state.snapshots.forEach(s => {
     s.accounts.forEach(a => {
       a.holdings.forEach(h => {
@@ -1374,7 +1384,8 @@ function exportXLSX(){
           h.currency || '',
           h.yahooSymbol || '',
           h.fallbackText || '',
-          a.id
+          a.id,
+          h.listingRegion || ''
         ]);
       });
     });
@@ -1447,7 +1458,7 @@ function importXLSX(file){
       function toNum(v){
         return typeof v === 'number' && !isNaN(v) ? v : (parseFloat(v) || 0);
       }
-      function rowToHolding(name, group, region, amount, quantity, symbol, nationName, lastPrice, currency, yahooSymbol, fallbackText){
+      function rowToHolding(name, group, region, amount, quantity, symbol, nationName, lastPrice, currency, yahooSymbol, fallbackText, listingRegion){
         const isCash = (name === '원화' || name === '외화');
         const holding = {
           id: uid(),
@@ -1464,6 +1475,7 @@ function importXLSX(file){
           if(currency) holding.currency = String(currency);
           if(yahooSymbol) holding.yahooSymbol = String(yahooSymbol);
           if(fallbackText) holding.fallbackText = String(fallbackText);
+          if(listingRegion) holding.listingRegion = String(listingRegion);
         }
         return holding;
       }
@@ -1474,14 +1486,14 @@ function importXLSX(file){
         const byAccount = {};
         const order = [];
         rows.forEach(r => {
-          const [accName, accType, holdName, group, region, amount, quantity, symbol, nationName, lastPrice, currency, yahooSymbol, fallbackText, accountId] = r;
+          const [accName, accType, holdName, group, region, amount, quantity, symbol, nationName, lastPrice, currency, yahooSymbol, fallbackText, accountId, listingRegion] = r;
           const hasId = accountId !== undefined && accountId !== null && String(accountId).trim() !== '';
           const key = hasId ? String(accountId) : (accName + '||' + accType);
           if(!byAccount[key]){
             byAccount[key] = { id: hasId ? String(accountId) : uid(), name: String(accName || '계좌'), accountType: ACCOUNT_TYPES.includes(accType) ? accType : '직투', holdings: [] };
             order.push(key);
           }
-          byAccount[key].holdings.push(rowToHolding(holdName, group, region, amount, quantity, symbol, nationName, lastPrice, currency, yahooSymbol, fallbackText));
+          byAccount[key].holdings.push(rowToHolding(holdName, group, region, amount, quantity, symbol, nationName, lastPrice, currency, yahooSymbol, fallbackText, listingRegion));
         });
         return order.map(k => byAccount[k]);
       }
@@ -1528,9 +1540,9 @@ function importXLSX(file){
       }
 
       sheetRows('월별상세종목').forEach(r => {
-        const [monthLabel, accName, accType, holdName, group, region, amount, quantity, symbol, nationName, lastPrice, currency, yahooSymbol, fallbackText, accountId] = r;
+        const [monthLabel, accName, accType, holdName, group, region, amount, quantity, symbol, nationName, lastPrice, currency, yahooSymbol, fallbackText, accountId, listingRegion] = r;
         const rawLabel = String(monthLabel || '').replace(/-/g, '');
-        ensureMonth(rawLabel).accountRows.push([accName, accType, holdName, group, region, amount, quantity, symbol, nationName, lastPrice, currency, yahooSymbol, fallbackText, accountId]);
+        ensureMonth(rawLabel).accountRows.push([accName, accType, holdName, group, region, amount, quantity, symbol, nationName, lastPrice, currency, yahooSymbol, fallbackText, accountId, listingRegion]);
       });
       // 종목이 0개라 '월별상세종목'에 행이 없는 계좌를 복원하기 위한 월별 계좌 요약(빈 계좌 포함 전체 목록)
       // 컬럼 순서: 월, 계좌명, 계좌유형, 총평가액, 종목수, 계좌ID
@@ -2666,10 +2678,8 @@ function stockLegendWithDividers(data, sortMode){
     const isCashLabel = isCashLikeLabel(d.label);
     // 계좌탭 목록과 동일한 색상 규칙: 평가액입력=회색, 개수입력(상장지역 미확인)=흰색, 개수입력(상장지역 확인됨)=연두
     const isQtyMode = !isCashLabel && d.quantity != null && d.symbol;
-    const hasListingRegion = isQtyMode && !!d.listingRegion;
-    const qtyStyle = hasListingRegion ? 'color:#D4FF3D;' : 'color:#FFFFFF;';
-    const nameStyle = isCashLabel ? 'color:#F0DA8C;font-weight:700;' : (isQtyMode ? qtyStyle : (d.quantity == null ? 'color:var(--text-dim);' : ''));
-    // 비중(%)에는 연두색을 적용하지 않고, 개수입력이면 항상 흰색으로 표시(상장지역 확인 여부와 무관)
+    // 도넛 하단 목록은 상장지역 확인 여부를 구분해 표시할 필요가 없어져서, 개수입력이면 항상 흰색으로 통일
+    const nameStyle = isCashLabel ? 'color:#F0DA8C;font-weight:700;' : (isQtyMode ? 'color:#FFFFFF;' : (d.quantity == null ? 'color:var(--text-dim);' : ''));
     const pctStyle = isCashLabel ? 'color:#F0DA8C;font-weight:700;' : (isQtyMode ? 'color:#FFFFFF;' : (d.quantity == null ? 'color:var(--text-dim);' : ''));
     // 계좌탭과 동일하게 개수가 입력된(또는 수량 정보가 있는) 종목만 클릭해 가격변화 아코디언을 연다.
     const canOpenStockHistory = !isCashLabel && d.quantity != null && d.accId && d.holdId;
@@ -2715,6 +2725,10 @@ function stockChartBlockSortable(holdings, allowRegion, extraRingSpecs, fallback
   const outerSize = 2 * (pieR + rings.length * ringW + (hasPartialLabel ? 20 : 6));
   const cx = outerSize/2, cy = outerSize/2;
   const pieInner = donutSVG(ordered, 160, 'stock').replace(/^<div class="donut-wrap">/, '').replace(/<\/div>$/, '');
+  // 계좌유형링을 삭제해서 링 개수가 전반적으로 1개씩 줄어든 만큼, 크기 기준도 한 단계씩 낮춰서
+  // (=한 단계씩 큰 사이즈를 써서) 도넛이 예전과 비슷한 크기로 보이도록 보정한다.
+  // 파이(원) 자체는 항상 동일한 크기(pieR=74)를 유지하고, 링 개수만큼 캔버스만 정확히 넓어진다.
+  // (원-CSS박스 크기는 1:1로 대응: 0개=160px, 1개=172px, 2개=184px, 3개=196px, 4개=208px)
   const sizeClass = rings.length >= 4 ? 'donut-wrap-xxl' : (rings.length >= 3 ? 'donut-wrap-xl' : (rings.length >= 2 ? 'donut-wrap-lg' : 'donut-wrap-md'));
 
   return `<div class="chart-box" id="stock-sortable-chart">
@@ -3505,10 +3519,17 @@ async function loadStockHistoryGraph(key, token){
     }
     if(!svg){ chartEl.innerHTML = '<div style="font-size:11px;color:#777777;text-align:center;">그래프 데이터가 없습니다.</div>'; return; }
 
-    const change = computePeriodChange(data, info.range);
+    // 국내상장(네이버 우선 조회) 종목은 큰 숫자를 목록과 동일한 h.lastPrice로 표시해 화면 간 가격 불일치를 없앤다.
+    // 1일 화면의 등락률도 네이버의 당일 등락률(h.lastChangePct)을 쓴다 - 야후 데이터와 재조회 시점이 달라
+    // 생기는 오차를 피하기 위함. 1개월~12개월 등락률은 네이버가 기간별 데이터를 안 주므로 야후 기준 유지.
+    const isNaverPriced = h.listingRegion && h.listingRegion !== 'overseas' && h.lastPrice != null;
+    const change = (isNaverPriced && info.range === '1d' && h.lastChangePct != null)
+      ? h.lastChangePct
+      : computePeriodChange(data, info.range);
     const changeColor = change > 0 ? '#B0466B' : (change < 0 ? '#4F8FB5' : '#777777');
     const arrow = change > 0 ? '▲' : (change < 0 ? '▼' : '');
-    const priceText = data.price != null ? data.price.toLocaleString(undefined,{maximumFractionDigits:2}) : '-';
+    const displayPrice = isNaverPriced ? h.lastPrice : data.price;
+    const priceText = displayPrice != null ? displayPrice.toLocaleString(undefined,{maximumFractionDigits:2}) : '-';
     chartEl.innerHTML = `
       <div style="width:216px;">
         <div style="display:flex;align-items:baseline;justify-content:center;gap:9px;margin-bottom:2px;line-height:1;">
@@ -4757,9 +4778,9 @@ function renderPanel(){
       </div>
       <div class="charts">
         ${(sectorAccordionShowRegionBar = true, '')}
-        <div style="grid-column:1/-1;">
+        <div style="grid-column:1/-1;min-width:0;">
           ${accountButtonsRowHtml(computeAccountBarData(holdingsWithType, state.accounts), totalAccountFilterSel)}
-          <div style="display:flex;flex-direction:column;max-width:800px;width:100%;margin:0 auto;">
+          <div style="display:flex;flex-direction:column;max-width:800px;width:100%;min-width:0;margin:0 auto;">
             ${accountBarOnlyHtml(computeAccountBarData(holdingsWithType, state.accounts), totalAccountFilterSel)}
             ${accountTypeBarChartBlock(selectedTypesFromAccountFilter(totalAccountFilterSel))}
           </div>
