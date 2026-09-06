@@ -437,7 +437,7 @@ const ACCOUNT_BAR_COLOR_B = '#9CAAD4';
 const CASH_COLOR = '#9A9BA1';
 const CASH_OVERSEAS = '#ADAEB4';
 const CREDIT_USED_COLOR = '#B85450';
-const CREDIT_REMAIN_COLOR = '#28292D';
+const CREDIT_REMAIN_COLOR = '#7E7F84';
 
 let state = { accounts: [], activeId: null, snapshots: [], domesticSubType: [], overseasSubType: [], domesticAccountFilter: [], overseasAccountFilter: [], historyRange: '6', creditLines: [] };
 let historyAccountFilter = [];
@@ -3673,7 +3673,7 @@ function accountButtonsRowHtml(data, selectedIds){
     return `<button class="btn" data-account-filter="${escapeHTML(d.id)}" style="padding:4px 10px;font-size:12px;flex-shrink:0;${isSelected ? 'background:var(--accent);color:#111;' : ''}">${escapeHTML(d.label)}</button>`;
   }).join('');
   return `<div class="chart-box" style="grid-column:1/-1;max-width:800px;width:100%;margin:0 auto;box-sizing:border-box;">
-    <div style="display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px;justify-content:center;">${buttonsHtml}</div>
+    <div style="display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px;margin-bottom:6px;justify-content:center;">${buttonsHtml}</div>
   </div>`;
 }
 
@@ -4632,11 +4632,13 @@ function renderPanel(){
       </div>
       <div class="charts">
         ${(sectorAccordionShowRegionBar = true, '')}
-        ${accountButtonsRowHtml(computeAccountBarData(holdingsWithType, state.accounts), totalAccountFilterSel)}
-        <div class="flush-bar-group" style="grid-column:1/-1;display:flex;flex-direction:column;">
-          ${state.creditLines.length > 0 ? creditGaugeChartBlock(true) : ''}
-          ${accountBarOnlyHtml(computeAccountBarData(holdingsWithType, state.accounts), totalAccountFilterSel)}
-          ${accountTypeBarChartBlock(totalAccountTypeFilter)}
+        <div style="grid-column:1/-1;">
+          ${accountButtonsRowHtml(computeAccountBarData(holdingsWithType, state.accounts), totalAccountFilterSel)}
+          <div class="flush-bar-group" style="display:flex;flex-direction:column;">
+            ${state.creditLines.length > 0 ? creditGaugeChartBlock(true) : ''}
+            ${accountBarOnlyHtml(computeAccountBarData(holdingsWithType, state.accounts), totalAccountFilterSel)}
+            ${accountTypeBarChartBlock(totalAccountTypeFilter)}
+          </div>
         </div>
         ${sectorChartBlock(scopedHoldings)}
         ${regionChartBlock(scopedHoldings)}
