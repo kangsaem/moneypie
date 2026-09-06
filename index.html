@@ -2096,7 +2096,7 @@ async function updateEditQtyPreview(){
     return;
   }
   previewEl.textContent = '가격 조회 중...';
-  const result = await refreshHoldingPrice({ symbol: editResolvedCode.code, region: editResolvedCode.region, fallbackText: editResolvedCode.fallbackText });
+  const result = await refreshHoldingPrice({ symbol: editResolvedCode.code, region: editResolvedCode.region, fallbackText: editResolvedCode.fallbackText, listingRegion: editResolvedCode.region });
   if(!result || result.price == null){ previewEl.textContent = '가격을 가져오지 못했습니다.'; return; }
   const computed = Math.round(qty * result.krwPrice);
   previewEl.textContent = `현재가 ${result.price.toLocaleString()}${result.currency && result.currency!=='KRW' ? ' '+result.currency : ''} → 평가액 약 ${computed.toLocaleString()}원`;
@@ -2129,7 +2129,7 @@ async function saveEditModal(){
     if(!editResolvedCode){ alert('종목명 자동완성에서 실제 상장 종목을 선택해주세요.'); return; }
     quantity = parseFloat(document.getElementById('editQty').value);
     if(isNaN(quantity)){ alert('주식수를 확인해주세요.'); return; }
-    const priceReq = { symbol: editResolvedCode.code, region: editResolvedCode.region, fallbackText: editResolvedCode.fallbackText, nationName: editResolvedCode.nationName };
+    const priceReq = { symbol: editResolvedCode.code, region: editResolvedCode.region, fallbackText: editResolvedCode.fallbackText, nationName: editResolvedCode.nationName, listingRegion: editResolvedCode.region };
     const result = await refreshHoldingPrice(priceReq);
     if(!result || result.price == null){ alert('가격을 가져오지 못했습니다. 잠시 후 다시 시도해주세요.'); return; }
     symbol = editResolvedCode.code;
