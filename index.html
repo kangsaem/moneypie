@@ -2528,13 +2528,13 @@ function partialRingSVG(fraction, color, cx, cy, radius, strokeWidth, ringName, 
 // 라벨은 그 각도로 뻗어나가는 시계바늘 끝에 매달린 것처럼, 반지름 방향과 나란히(수직으로) 세워서 표시한다.
 function partialRingEndLabelSVG(fraction, cx, cy, radius, text, color){
   if(!text || fraction <= 0) return '';
-  const endAngleDeg = -90 - Math.min(1, Math.max(0, fraction)) * 360;
-  const rad = endAngleDeg * Math.PI / 180;
+  const midAngleDeg = -90 - (Math.min(1, Math.max(0, fraction)) * 360) / 2;
+  const rad = midAngleDeg * Math.PI / 180;
   const labelR = radius + 9;
   const x = cx + labelR * Math.cos(rad);
   const y = cy + labelR * Math.sin(rad);
-  const rotateDeg = endAngleDeg + 90;
-  return `<text x="${x.toFixed(2)}" y="${y.toFixed(2)}" transform="rotate(${rotateDeg.toFixed(2)} ${x.toFixed(2)} ${y.toFixed(2)})" text-anchor="start" dominant-baseline="middle" font-size="10" font-weight="700" fill="${color}">${escapeHTML(text)}</text>`;
+  const rotateDeg = midAngleDeg + 90;
+  return `<text x="${x.toFixed(2)}" y="${y.toFixed(2)}" transform="rotate(${rotateDeg.toFixed(2)} ${x.toFixed(2)} ${y.toFixed(2)})" text-anchor="middle" dominant-baseline="middle" font-size="10" font-weight="700" fill="${color}">${escapeHTML(text)}</text>`;
 }
 
 function decorativeRingsSVG(ringSpecs, cx, cy, pieR, ringW){
@@ -2614,7 +2614,7 @@ function stockChartBlockSortable(holdings, allowRegion, extraRingSpecs, fallback
   // 그 바깥에 링들을 간격 없이 안쪽부터 순서대로 이어 붙인다. 전체 캔버스만 그만큼 넓어진다.
   const pieR = 74, ringW = 6;
   const hasPartialLabel = rings.some(r => r.partial && r.partial.amountLabel);
-  const outerSize = 2 * (pieR + rings.length * ringW + (hasPartialLabel ? 34 : 6));
+  const outerSize = 2 * (pieR + rings.length * ringW + (hasPartialLabel ? 20 : 6));
   const cx = outerSize/2, cy = outerSize/2;
   const pieInner = donutSVG(ordered, 160, 'stock').replace(/^<div class="donut-wrap">/, '').replace(/<\/div>$/, '');
   const sizeClass = rings.length >= 4 ? 'donut-wrap-xxl' : (rings.length >= 3 ? 'donut-wrap-xl' : (rings.length >= 2 ? 'donut-wrap-lg' : 'donut-wrap-md'));
@@ -4664,7 +4664,7 @@ function renderPanel(){
           { data: computeWeights(scopedHoldings, 'group'), type: 'group', name: 'decorative-sector' },
           { data: regionQuadRingData(scopedHoldings), type: 'region', name: 'decorative-region', preOrdered: true },
           { data: computeWeights(scopedHoldings, 'accountTypeLabel'), type: 'accountType', name: 'decorative-accounttype', opacity: 0.8 },
-          ...(state.creditLines.length > 0 && grandTotal > 0 ? [{ partial: { fraction: totalCreditUsed / grandTotal, color: '#B85450', label: '마통사용', amountLabel: `${Math.floor(totalCreditUsed/10000).toLocaleString()}만` }, name: 'decorative-credit' }] : [])
+          ...(state.creditLines.length > 0 && grandTotal > 0 ? [{ partial: { fraction: totalCreditUsed / grandTotal, color: '#B85450', label: '마통사용', amountLabel: `${Math.floor(totalCreditUsed/10000).toLocaleString()}` }, name: 'decorative-credit' }] : [])
         ])}
         ${stockDetailButtonBlock(scopedHoldings)}
       </div>
