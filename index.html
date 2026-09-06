@@ -4599,7 +4599,6 @@ function renderPanel(){
     const accountBarHtml = accountBarChartBlock(regionHoldingsWithType, state.accounts, accountFilterSel);
     const subTypeBarHtml = subTypeBarBlock(regionHoldingsWithType, selectedTypesFromAccountFilter(accountFilterSel));
 
-    const byAccountType = computeWeights(regionHoldingsWithType, 'accountTypeLabel');
     const cashTotal = _.sumBy(holdings.filter(isCashHolding), 'amount');
     const cashPct = total ? (cashTotal/total*100) : 0;
     const noFilterActive = accountFilterSel.length === 0;
@@ -4623,10 +4622,7 @@ function renderPanel(){
         ${(sectorAccordionShowRegionBar = false, '')}
         ${noFilterActive ? '' : lockedRegionDonutBlock(region, holdingsInScopeAllRegions)}
         ${sectorChartBlock(holdings)}
-        ${stockChartBlockSortable(holdings, false, noFilterActive ? [
-          { data: computeWeights(holdings, 'group'), type: 'group', name: 'decorative-sector' },
-          { data: byAccountType, type: 'accountType', name: 'decorative-accounttype' }
-        ] : [
+        ${stockChartBlockSortable(holdings, false, [
           { data: computeWeights(holdings, 'group'), type: 'group', name: 'decorative-sector' }
         ])}
         ${stockDetailButtonBlock(holdings, region === 'domestic' ? '원화' : '외화')}
@@ -4716,7 +4712,7 @@ function renderPanel(){
         ${(sectorAccordionShowRegionBar = true, '')}
         <div style="grid-column:1/-1;">
           ${accountButtonsRowHtml(computeAccountBarData(holdingsWithType, state.accounts), totalAccountFilterSel)}
-          <div class="flush-bar-group" style="display:flex;flex-direction:column;">
+          <div class="flush-bar-group" style="display:flex;flex-direction:column;max-width:800px;width:100%;margin:0 auto;">
             ${accountBarOnlyHtml(computeAccountBarData(holdingsWithType, state.accounts), totalAccountFilterSel)}
             ${accountTypeBarChartBlock(selectedTypesFromAccountFilter(totalAccountFilterSel))}
           </div>
@@ -4726,7 +4722,6 @@ function renderPanel(){
         ${stockChartBlockSortable(scopedHoldings, true, [
           { data: computeWeights(scopedHoldings, 'group'), type: 'group', name: 'decorative-sector' },
           { data: regionQuadRingData(scopedHoldings), type: 'region', name: 'decorative-region', preOrdered: true },
-          { data: computeWeights(scopedHoldings, 'accountTypeLabel'), type: 'accountType', name: 'decorative-accounttype', opacity: 0.8 },
           ...(state.creditLines.length > 0 && grandTotal > 0 ? [{ partial: {
             fraction: totalCreditUsed / grandTotal,
             color: '#B85450',
