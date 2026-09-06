@@ -428,8 +428,9 @@ const REGION_LIGHT = '#CBECEA';
 const ACCTYPE_STRONG = '#7C6499';
 const ACCTYPE_LIGHT = '#E1D7EC';
 // 계좌비중 막대그래프 그라데이션: 금액별 도넛그래프의 가장 진한 파란색(NAVY_STRONG) -> 종목추가 버튼의 하늘색(--accent)
-const ACCOUNT_BAR_STRONG = '#646FDF';
-const ACCOUNT_BAR_LIGHT = '#4FC3F7';
+// 계좌비중 막대그래프 그라데이션: 훨씬 더 짙은 남색 -> 하늘색(--accent) -> 흰색
+// 계좌비중 막대그래프: 금액순 도넛과 같은 짙은 남색(점점 연해짐)과 하늘색이 번갈아 나오는 패턴
+const ACCOUNT_BAR_SKY = '#4FC3F7';
 const CASH_COLOR = '#9A9BA1';
 const CASH_OVERSEAS = '#ADAEB4';
 const CREDIT_USED_COLOR = '#B85450';
@@ -3627,8 +3628,11 @@ function stackedBarSVG(data, width, height, type, highlightLabels){
 }
 
 function accountBarColor(index, count){
-  const t = count > 1 ? index/(count-1) : 0;
-  return lerpColor(ACCOUNT_BAR_STRONG, ACCOUNT_BAR_LIGHT, t);
+  if(index % 2 === 1) return ACCOUNT_BAR_SKY;
+  const cycle = Math.floor(index/2);
+  const totalCycles = Math.ceil(count/2);
+  const t = totalCycles > 1 ? cycle/(totalCycles-1) : 0;
+  return lerpColor(NAVY_STRONG, NAVY_LIGHT, t);
 }
 
 function accountStackedBarSVG(data, width, height, highlightIds){
@@ -3660,13 +3664,13 @@ function accountBarChartBlock(holdingsWithAccId, accounts, selectedIds){
   if(raw.length === 0) return '';
   const total = _.sumBy(raw, 'amount');
   const data = raw.map(d => ({ ...d, pct: total ? (d.amount/total*100) : 0 })).sort((a,b) => b.amount - a.amount);
-  const legendHtml = data.map((d,i) => {
+  // 월별탭 계좌 버튼과 동일한 단순 pill 버튼 형태 + 좌우 스크롤 가능한 반응형 컨테이너(모바일 화면 밖으로 넘치지 않도록)
+  const buttonsHtml = data.map(d => {
     const isSelected = selectedIds.includes(d.id);
-    const btnStyle = `cursor:pointer;border:1px solid ${isSelected ? 'var(--accent)' : 'var(--border)'};border-radius:6px;padding:4px 6px;${isSelected ? 'background:var(--accent);color:#111;' : ''}`;
-    return `<div class="legend-item" data-account-filter="${escapeHTML(d.id)}" style="flex-direction:column;align-items:center;gap:2px;min-width:0;${btnStyle}"><span style="display:flex;align-items:center;gap:4px;"><span class="swatch" style="background:${accountBarColor(i, data.length)};width:8px;height:8px;flex-shrink:0;"></span><span class="legend-name" style="font-size:12.5px;white-space:nowrap;">${escapeHTML(d.label)}</span></span><span class="legend-pct num" style="font-size:12.5px;white-space:nowrap;">${d.pct.toFixed(1)}<span class="pct-sign">%</span></span></div>`;
+    return `<button class="btn" data-account-filter="${escapeHTML(d.id)}" style="padding:4px 10px;font-size:12px;flex-shrink:0;${isSelected ? 'background:var(--accent);color:#111;' : ''}">${escapeHTML(d.label)}</button>`;
   }).join('');
-  return `<div class="chart-box" style="grid-column:1/-1;max-width:800px;margin:0 auto;">
-    <div class="legend" style="flex-direction:row;flex-wrap:nowrap;justify-content:center;gap:4px;overflow-x:auto;margin-bottom:6px;">${legendHtml}</div>
+  return `<div class="chart-box" style="grid-column:1/-1;max-width:800px;width:100%;margin:0 auto;box-sizing:border-box;">
+    <div style="display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px;margin-bottom:6px;max-width:100%;">${buttonsHtml}</div>
     ${accountStackedBarSVG(data, 800, 22, selectedIds)}
   </div>`;
 }
@@ -4243,7 +4247,7 @@ function creditGaugeChartBlock(showAmountOverlay){
     { label:'잔여한도', amount: remain, color: CREDIT_REMAIN_COLOR }
   ];
   const overlayHtml = showAmountOverlay ? `<div style="position:absolute;top:0;left:0;width:${usedPct.toFixed(2)}%;height:22px;display:flex;align-items:center;justify-content:flex-end;padding-right:6px;box-sizing:border-box;overflow:hidden;pointer-events:none;"><span style="color:#FBD9E4;font-size:15px;font-weight:500;white-space:nowrap;">${Math.floor(totalUsed/10000).toLocaleString()}</span></div>` : '';
-  return `<div class="chart-box" style="grid-column:1/-1;max-width:800px;margin:0 auto;${showAmountOverlay ? 'margin-bottom:-16px;' : ''}">
+  return `<div class="chart-box" style="grid-column:1/-1;max-width:800px;margin:0 auto;">
     <div style="position:relative;">
       ${creditBarSVG(gaugeData, 800, 22)}
       ${overlayHtml}
@@ -4605,9 +4609,11 @@ function renderPanel(){
       </div>
       <div class="charts">
         ${(sectorAccordionShowRegionBar = true, '')}
-        ${accountBarChartBlock(holdingsWithType, state.accounts, totalAccountFilterSel)}
-        ${state.creditLines.length > 0 ? creditGaugeChartBlock(true) : ''}
-        ${accountTypeBarChartBlock(totalAccountTypeFilter)}
+        <div style="grid-column:1/-1;display:flex;flex-direction:column;">
+          ${accountBarChartBlock(holdingsWithType, state.accounts, totalAccountFilterSel)}
+          ${state.creditLines.length > 0 ? creditGaugeChartBlock(true) : ''}
+          ${accountTypeBarChartBlock(totalAccountTypeFilter)}
+        </div>
         ${sectorChartBlock(scopedHoldings)}
         ${regionChartBlock(scopedHoldings)}
         ${stockChartBlockSortable(scopedHoldings, true, [
