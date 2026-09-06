@@ -2522,12 +2522,29 @@ function partialRingSVG(fraction, color, cx, cy, radius, strokeWidth, ringName, 
   return `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="${color}" stroke-width="${strokeWidth}" stroke-dasharray="${dash.toFixed(2)} ${gap.toFixed(2)}" stroke-dashoffset="0" transform="translate(${2*cx},0) scale(-1,1) rotate(-90 ${cx} ${cy})" data-ring="${ringName}"><title>${escapeHTML(tooltipLabel || '')} ${(fraction*100).toFixed(1)}%</title></circle>`;
 }
 
+// 부분 링(마통사용 등)의 반시계 방향 끝단에 작은 라벨을 표시.
+// partialRingSVG의 원(circle)은 12시 방향(top)에서 시작해 반시계 방향으로 fraction*360도만큼 그려지므로,
+// 끝단 각도 = -90 - fraction*360 (도, 표준 화면좌표: -90이 12시, 각도가 커질수록 시계방향).
+// 라벨은 그 각도로 뻗어나가는 시계바늘 끝에 매달린 것처럼, 반지름 방향과 나란히(수직으로) 세워서 표시한다.
+function partialRingEndLabelSVG(fraction, cx, cy, radius, text, color){
+  if(!text || fraction <= 0) return '';
+  const endAngleDeg = -90 - Math.min(1, Math.max(0, fraction)) * 360;
+  const rad = endAngleDeg * Math.PI / 180;
+  const labelR = radius + 9;
+  const x = cx + labelR * Math.cos(rad);
+  const y = cy + labelR * Math.sin(rad);
+  const rotateDeg = endAngleDeg + 90;
+  return `<text x="${x.toFixed(2)}" y="${y.toFixed(2)}" transform="rotate(${rotateDeg.toFixed(2)} ${x.toFixed(2)} ${y.toFixed(2)})" text-anchor="middle" dominant-baseline="middle" font-size="8" font-weight="700" fill="${color}">${escapeHTML(text)}</text>`;
+}
+
 function decorativeRingsSVG(ringSpecs, cx, cy, pieR, ringW){
   // ringSpecs: [{data, type, name}, ...] 또는 [{partial:{fraction,color}, name}, ...] 안쪽 -> 바깥쪽 순서
   return ringSpecs.map((spec, i) => {
     const r = pieR + ringW/2 + i*ringW;
     if(spec.partial){
-      return partialRingSVG(spec.partial.fraction, spec.partial.color, cx, cy, r, ringW, spec.name, spec.partial.label);
+      const ringSvg = partialRingSVG(spec.partial.fraction, spec.partial.color, cx, cy, r, ringW, spec.name, spec.partial.label);
+      const labelSvg = partialRingEndLabelSVG(spec.partial.fraction, cx, cy, r, spec.partial.amountLabel, spec.partial.color);
+      return ringSvg + labelSvg;
     }
     const ordered = spec.preOrdered ? spec.data : reorderCashFirst(spec.data);
     return ringSegmentsSVG(ordered, spec.type, cx, cy, r, ringW, spec.name, spec.opacity);
@@ -2596,7 +2613,8 @@ function stockChartBlockSortable(holdings, allowRegion, extraRingSpecs, fallback
   // 파이(종목) 자체 반지름은 다른 단독 도넛과 완전히 동일(size=160 기준 r=74)하게 유지하고,
   // 그 바깥에 링들을 간격 없이 안쪽부터 순서대로 이어 붙인다. 전체 캔버스만 그만큼 넓어진다.
   const pieR = 74, ringW = 6;
-  const outerSize = 2 * (pieR + rings.length * ringW + 6);
+  const hasPartialLabel = rings.some(r => r.partial && r.partial.amountLabel);
+  const outerSize = 2 * (pieR + rings.length * ringW + (hasPartialLabel ? 22 : 6));
   const cx = outerSize/2, cy = outerSize/2;
   const pieInner = donutSVG(ordered, 160, 'stock').replace(/^<div class="donut-wrap">/, '').replace(/<\/div>$/, '');
   const sizeClass = rings.length >= 4 ? 'donut-wrap-xxl' : (rings.length >= 3 ? 'donut-wrap-xl' : (rings.length >= 2 ? 'donut-wrap-lg' : 'donut-wrap-md'));
@@ -4646,7 +4664,7 @@ function renderPanel(){
           { data: computeWeights(scopedHoldings, 'group'), type: 'group', name: 'decorative-sector' },
           { data: regionQuadRingData(scopedHoldings), type: 'region', name: 'decorative-region', preOrdered: true },
           { data: computeWeights(scopedHoldings, 'accountTypeLabel'), type: 'accountType', name: 'decorative-accounttype', opacity: 0.8 },
-          ...(state.creditLines.length > 0 && grandTotal > 0 ? [{ partial: { fraction: totalCreditUsed / grandTotal, color: '#B85450', label: '마통사용' }, name: 'decorative-credit' }] : [])
+          ...(state.creditLines.length > 0 && grandTotal > 0 ? [{ partial: { fraction: totalCreditUsed / grandTotal, color: '#B85450', label: '마통사용', amountLabel: `${Math.floor(totalCreditUsed/10000).toLocaleString()}만` }, name: 'decorative-credit' }] : [])
         ])}
         ${stockDetailButtonBlock(scopedHoldings)}
       </div>
