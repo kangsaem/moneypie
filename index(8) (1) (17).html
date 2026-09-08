@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Harbor Defense - Hormuz</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#071522;font-family:Arial,sans-serif}
+#game{display:block;width:100%;height:100%;touch-action:none}
+.attack{
+ position:fixed;bottom:20px;width:96px;height:58px;border-radius:16px;
+ border:1px solid rgba(255,255,255,.28);background:rgba(12,38,55,.88);
+ color:#fff;font-weight:bold;font-size:14px;z-index:4;user-select:none;
+ box-shadow:0 5px 18px rgba(0,0,0,.28)
+}
+.attack:active{transform:scale(.94);background:rgba(35,80,105,.95)}
+#leftAttack{left:18px}
+#rightAttack{right:18px}
+#ammoBox{
+ position:fixed;left:50%;bottom:52px;transform:translateX(-50%);
+ z-index:3;pointer-events:none;
+ background:rgba(0,15,28,.82);padding:6px 12px;border-radius:10px;
+ border:1px solid rgba(150,220,255,.25);min-width:180px
+}
+#ammoLabel{color:#dff7ff;font-size:10px;font-weight:bold;text-align:center;margin-bottom:4px}
+#ammoBarBg{width:100%;height:10px;background:rgba(0,0,0,.45);border-radius:5px;overflow:hidden}
+#ammoBarFill{height:100%;width:100%;background:linear-gradient(90deg,#3ecf8e,#7dffb2);border-radius:5px;transition:width .15s linear}
+#legend{
+ position:fixed;left:50%;bottom:28px;transform:translateX(-50%);
+ color:rgba(230,250,255,.7);font-size:10px;z-index:3;pointer-events:none;
+ text-align:center;line-height:1.35;white-space:nowrap
+}
+#stats{
+ position:fixed;left:50%;bottom:4px;transform:translateX(-50%);
+ display:flex;gap:8px;z-index:3;pointer-events:none;
+ font-size:10px;font-weight:bold;white-space:nowrap
+}
+#stats span{
+ background:rgba(0,15,28,.78);padding:3px 8px;border-radius:8px;
+ border:1px solid rgba(150,220,255,.22);color:#e8f6ff
+}
+#stats .enemy-sunk{color:#ff9b9b}
+#stats .ally-sunk{color:#ffc27a}
+#stats .ally-pass{color:#8dffb0}
+#stats .enemy-pass{color:#ff8f8f}
+@media(min-width:700px){
+ .attack{width:112px;height:64px;font-size:15px}
+ #stats{font-size:11px;gap:10px}
+ #ammoBox{min-width:200px;bottom:56px}
+ #legend{bottom:32px;font-size:11px}
+}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<button id="leftAttack" class="attack">◀ Near</button>
+<button id="rightAttack" class="attack">Far ▶</button>
+<div id="ammoBox">
+ <div id="ammoLabel">Shell Gauge</div>
+ <div id="ammoBarBg"><div id="ammoBarFill"></div></div>
+</div>
+<div id="legend">PC: ← Near &nbsp; → Far &nbsp;|&nbsp; Mobile: Left / Right buttons</div>
+<div id="stats">
+ <span class="enemy-sunk">Enemy Sunk <b id="statEnemySunk">0</b></span>
+ <span class="ally-sunk">Ally Sunk <b id="statAllySunk">0</b></span>
+ <span class="ally-pass">Ally Passed <b id="statAllyPass">0</b></span>
+ <span class="enemy-pass">Enemy Passed <b id="statEnemyPass">0</b></span>
+</div>
+
+<script>
+"use strict";
+
+const canvas=document.getElementById("game");
+const ctx=canvas.getContext("2d");
+let W=0,H=0,dpr=1;
+
+const PATH={
+  rightX:.88, leftX:.16, peninX:.26,
+  topY:.035, portX:.50, portY:.035, bottomY:1.06,
+  targetY:.50, peninTop:.38, peninBot:.62,
+  playerTowerX:.26, playerTowerY:.50
+};
+
+const SIZE_DATA={
+  S:{label:"S", size:11, speedMul:1.25},
+  M:{label:"M", size:15, speedMul:1.0},
+  L:{label:"L", size:22, speedMul:0.62}
+};
+const SHIP={ minSpeed:70, maxSpeed:145, portStopDuration:3 };
+
+let ships=[], nextId=1, spawnTimer=0, score=0;
+let message="", messageTimer=0, attackFlash=0, attackSide="";
+let projectiles=[], explosions=[];
+let statEnemySunk=0, statAllySunk=0, statAllyPass=0, statEnemyPass=0;
+let allySpawned=0, enemySpawned=0;
+const MAX_ALLY=30, MAX_ENEMY=30;
+
+const AMMO={max:6, current:6, rechargeRate:0.35, cost:1, stage2:false};
+const SHELL_DATA={nearFlightTime:1.15, farFlightTime:2.0};
+let towerState={player:{hp:100,maxHp:100,cooldown:0}};
+let landRocks=[];
+let trumpMood="neutral", trumpMoodTimer=0, trumpTime=0;
+
+/*
+  Flow:
+  wave1 (30+30) → title STAGE 2 → stage2 (30+30 + SecDef, fast ammo)
+  → title STAGE 3 → stage3 (30+30 + Treasury Sec) → end → SUCCESS/FAIL
+  Success: (allyPass + enemyPass) >= 40 AND enemySunk >= 12
+*/
+let stagePhase="wave1"; // wave1 | title2 | stage2 | title3 | stage3 | end
+let stageTitleTimer=0;
+let stageTitleLabel="";
+let secDefPresent=false, secDefTime=0, secDefBubbleTimer=0, secDefBubbleVisible=false;
+let treasPresent=false, treasTime=0, treasBubbleTimer=0, treasBubbleVisible=false;
+let endResult=null; // "SUCCESS" | "FAIL"
+let endTimer=0;
+
+function updateStatsUI(){
+ document.getElementById("statEnemySunk").textContent=statEnemySunk;
+ document.getElementById("statAllySunk").textContent=statAllySunk;
+ document.getElementById("statAllyPass").textContent=statAllyPass;
+ document.getElementById("statEnemyPass").textContent=statEnemyPass;
+}
+function updateAmmoUI(){
+ const pct=Math.max(0,Math.min(1,AMMO.current/AMMO.max))*100;
+ const el=document.getElementById("ammoBarFill");
+ el.style.width=pct+"%";
+ if(AMMO.current<0.15) el.style.background="linear-gradient(90deg,#8a2020,#c94a4a)";
+ else if(AMMO.current<1.5) el.style.background="linear-gradient(90deg,#c94a4a,#ff8a6a)";
+ else if(AMMO.current<3.5) el.style.background="linear-gradient(90deg,#c9a24a,#ffe08a)";
+ else el.style.background="linear-gradient(90deg,#3ecf8e,#7dffb2)";
+ document.getElementById("ammoLabel").textContent="Shell Gauge  "+AMMO.current.toFixed(1)+" / "+AMMO.max;
+}
+
+function buildLandRocks(){
+ landRocks=[];
+ const leftLandW=W*0.13, rightLandW=W*0.10;
+ for(let i=0;i<36;i++){
+   const side=i%4; let x,y,r;
+   if(side===0){x=6+Math.random()*leftLandW*.85;y=Math.random()*H;r=2+Math.random()*4}
+   else if(side===1){x=W-rightLandW+Math.random()*rightLandW*.9;y=Math.random()*H;r=2+Math.random()*4}
+   else if(side===2){x=Math.random()*W;y=5+Math.random()*H*.03;r=2+Math.random()*3}
+   else{x=Math.random()*W;y=H*.96+Math.random()*H*.03;r=2+Math.random()*3}
+   landRocks.push({x,y,r});
+ }
+ const penX=px(PATH.peninX), penMid=py(PATH.targetY), baseX=W*0.13;
+ for(let i=0;i<6;i++){
+   const t=i/5;
+   landRocks.push({x:baseX+(penX-baseX)*(0.3+t*0.5)+Math.random()*8, y:penMid+(Math.random()-0.5)*40, r:2+Math.random()*3});
+ }
+}
+
+function resize(){
+ dpr=Math.min(devicePixelRatio||1,2);
+ W=innerWidth; H=innerHeight;
+ canvas.width=Math.floor(W*dpr); canvas.height=Math.floor(H*dpr);
+ canvas.style.width=W+"px"; canvas.style.height=H+"px";
+ ctx.setTransform(dpr,0,0,dpr,0,0);
+ buildLandRocks();
+}
+addEventListener("resize",resize);
+const px=v=>v*W, py=v=>v*H;
+
+function pickShipConfig(){
+ if(Math.random()<0.12) return {kind:"lng", sizeKey:"L", faction:Math.random()<0.55?"enemy":"ally"};
+ const r=Math.random();
+ return {kind:"tanker", sizeKey:r<0.35?"S":r<0.7?"M":"L", faction:Math.random()<0.5?"enemy":"ally"};
+}
+
+function createShip(){
+ const cfg=pickShipConfig();
+ const sd=SIZE_DATA[cfg.sizeKey];
+ const speed=(SHIP.minSpeed+Math.random()*(SHIP.maxSpeed-SHIP.minSpeed))*sd.speedMul;
+ let color, pattern;
+ if(cfg.kind==="lng"){
+   if(cfg.faction==="enemy"){color="#3aa8d4";pattern="lng";}
+   else{color="#9ad8f0";pattern="stripe";}
+ }else if(cfg.faction==="enemy"){
+   color=cfg.sizeKey==="L"?"#2d9a5c":cfg.sizeKey==="M"?"#39b86d":"#4ecf80";
+   pattern="solid";
+ }else{
+   color=["#4aa879","#d5a84c","#d76b63"][Math.floor(Math.random()*3)];
+   pattern="stripe";
+ }
+ return {
+   id:nextId++, x:px(PATH.rightX), y:py(1.05),
+   state:"MOVING_RIGHT_EDGE_UP", portTimer:0,
+   faction:cfg.faction, kind:cfg.kind, sizeKey:cfg.sizeKey,
+   shipSize:sd.size, color, pattern, alive:true, hitFlash:0, speed,
+   edgeOffset:(Math.random()-.5)*W*.06
+ };
+}
+
+function spawnShip(){
+ if(allySpawned>=MAX_ALLY && enemySpawned>=MAX_ENEMY) return;
+ for(let a=0;a<12;a++){
+   const s=createShip();
+   if(s.faction==="ally" && allySpawned>=MAX_ALLY) continue;
+   if(s.faction==="enemy" && enemySpawned>=MAX_ENEMY) continue;
+   if(s.faction==="ally") allySpawned++; else enemySpawned++;
+   ships.push(s); return;
+ }
+}
+
+function moveToward(s,tx,ty,dt){
+ const dx=tx-s.x, dy=ty-s.y, dist=Math.hypot(dx,dy);
+ const step=s.speed*dt;
+ if(dist<=step){s.x=tx;s.y=ty;return true}
+ s.x+=dx/dist*step; s.y+=dy/dist*step; return false;
+}
+
+function impactPointForShip(s, side){
+ const ty=py(PATH.targetY);
+ if(side==="right") return {x:px(PATH.rightX)+s.edgeOffset, y:ty};
+ return {x:px(PATH.peninX)+12+Math.abs(s.edgeOffset)*.35, y:ty};
+}
+
+function setTrumpMood(mood){ trumpMood=mood; trumpMoodTimer=2.2; }
+
+function sinkShip(s, fromChain){
+ if(!s.alive) return;
+ s.alive=false; s.hitFlash=.55;
+ if(s.faction==="enemy"){
+   score+=s.kind==="lng"?200:100; statEnemySunk++;
+   message=s.kind==="lng"?"Enemy LNG BOOM! +200":"Enemy Sunk! +100";
+   setTrumpMood("happy");
+ }else{
+   score=Math.max(0,score-(s.kind==="lng"?250:150)); statAllySunk++;
+   message=s.kind==="lng"?"Ally LNG BOOM! -250":"Ally Sunk! -150";
+   setTrumpMood("pain");
+ }
+ messageTimer=1.1; updateStatsUI();
+ if(s.kind==="lng"){
+   explosions.push({x:s.x,y:s.y,life:0.9,maxLife:0.9});
+   ships.forEach(o=>{
+     if(!o.alive||o.id===s.id) return;
+     if(Math.hypot(o.x-s.x,o.y-s.y)<95) sinkShip(o,true);
+   });
+   if(!fromChain) message=s.faction==="enemy"?"Enemy LNG Chain!":"Ally LNG Chain!";
+ }
+}
+
+function updateProjectiles(dt){
+ projectiles.forEach(p=>{
+   p.life-=dt;
+   const progress=Math.min(1,1-p.life/p.maxLife);
+   p.x=p.startX+(p.tx-p.startX)*progress;
+   p.y=p.startY+(p.ty-p.startY)*progress;
+   if(p.life<=0&&!p.resolved){
+     p.resolved=true;
+     let hit=null,best=32;
+     ships.forEach(s=>{
+       if(!s.alive)return;
+       if(p.side==="right"){
+         if(!(s.state==="MOVING_RIGHT_EDGE_UP"||s.state==="MOVING_TO_PORT"))return;
+       }else{
+         if(!(s.state==="MOVING_LEFT_EDGE_DOWN"||s.state==="MOVING_AROUND_PENIN"||
+              s.state==="MOVING_LEFT_AFTER_PENIN"||s.state==="MOVING_LEFT_EXIT"))return;
+       }
+       const d=Math.hypot(s.x-p.tx,s.y-p.ty);
+       if(d<best){best=d;hit=s;}
+     });
+     if(hit) sinkShip(hit,false); else {message="Miss!";messageTimer=.6;}
+   }
+ });
+ projectiles=projectiles.filter(p=>!p.resolved);
+}
+
+function updateShip(s,dt){
+ switch(s.state){
+  case"MOVING_RIGHT_EDGE_UP":
+   if(moveToward(s,px(PATH.rightX)+s.edgeOffset,py(PATH.topY),dt)) s.state="MOVING_TO_PORT"; break;
+  case"MOVING_TO_PORT":
+   if(moveToward(s,px(PATH.portX),py(PATH.portY),dt)){s.state="DOCKED_AT_PORT";s.portTimer=SHIP.portStopDuration;} break;
+  case"DOCKED_AT_PORT":
+   s.portTimer-=dt; if(s.portTimer<=0) s.state="MOVING_TO_LEFT_EDGE"; break;
+  case"MOVING_TO_LEFT_EDGE":
+   if(moveToward(s,px(PATH.leftX)+s.edgeOffset,py(PATH.topY),dt)) s.state="MOVING_LEFT_EDGE_DOWN"; break;
+  case"MOVING_LEFT_EDGE_DOWN":
+   if(moveToward(s,px(PATH.leftX)+s.edgeOffset,py(PATH.peninTop),dt)) s.state="MOVING_AROUND_PENIN"; break;
+  case"MOVING_AROUND_PENIN":
+   if(moveToward(s,px(PATH.peninX)+12+Math.abs(s.edgeOffset)*.35,py(PATH.targetY),dt)) s.state="MOVING_LEFT_AFTER_PENIN"; break;
+  case"MOVING_LEFT_AFTER_PENIN":
+   if(moveToward(s,px(PATH.leftX)+s.edgeOffset,py(PATH.peninBot),dt)) s.state="MOVING_LEFT_EXIT"; break;
+  case"MOVING_LEFT_EXIT":
+   if(moveToward(s,px(PATH.leftX)+s.edgeOffset,py(PATH.bottomY),dt)){
+     if(s.faction==="ally")statAllyPass++; else statEnemyPass++;
+     updateStatsUI(); s.alive=false;
+   }
+   break;
+ }
+ if(s.hitFlash>0)s.hitFlash-=dt;
+}
+
+function attack(side){
+ if(stagePhase==="end" || stagePhase==="title2" || stagePhase==="title3") return;
+ if(AMMO.current<AMMO.cost){message="No shells!";messageTimer=.5;return;}
+ if(towerState.player.cooldown>0){message="Reloading...";messageTimer=.45;return;}
+ const candidates=ships.filter(s=>{
+   if(!s.alive)return false;
+   if(side==="right") return (s.state==="MOVING_RIGHT_EDGE_UP"||s.state==="MOVING_TO_PORT")&&s.y>H*.1&&s.y<H*.95;
+   return (s.state==="MOVING_LEFT_EDGE_DOWN"||s.state==="MOVING_AROUND_PENIN"||
+           s.state==="MOVING_LEFT_AFTER_PENIN"||s.state==="MOVING_LEFT_EXIT")&&s.y>H*.1&&s.y<H*.95;
+ });
+ if(!candidates.length){message=side==="right"?"Far: no target":"Near: no target";messageTimer=.8;return;}
+ const attackY=H*PATH.targetY;
+ const target=candidates.reduce((a,b)=>Math.abs(a.y-attackY)<Math.abs(b.y-attackY)?a:b);
+ AMMO.current-=AMMO.cost; updateAmmoUI();
+ towerState.player.cooldown=.45;
+ const towerX=px(PATH.playerTowerX), towerY=py(PATH.targetY);
+ const imp=impactPointForShip(target,side);
+ const flightTime=side==="left"?SHELL_DATA.nearFlightTime:SHELL_DATA.farFlightTime;
+ projectiles.push({x:towerX,y:towerY,startX:towerX,startY:towerY,tx:imp.x,ty:imp.y,target:null,life:flightTime,maxLife:flightTime,side});
+ attackFlash=.18; attackSide=side;
+ message=(side==="right"?"Far":"Near")+" shell fired"; messageTimer=.7;
+}
+
+function bindAttack(id,side){
+ const el=document.getElementById(id);
+ const fire=e=>{e.preventDefault();e.stopPropagation();attack(side);};
+ el.addEventListener("pointerdown",fire,{passive:false});
+ el.addEventListener("click",fire);
+}
+bindAttack("leftAttack","left");
+bindAttack("rightAttack","right");
+addEventListener("keydown",e=>{
+ if(e.repeat)return;
+ if(e.key==="ArrowLeft")attack("left");
+ if(e.key==="ArrowRight")attack("right");
+});
+
+function waveDone(){
+ return allySpawned>=MAX_ALLY && enemySpawned>=MAX_ENEMY && ships.length===0 && projectiles.length===0;
+}
+
+function resetWaveSpawns(){
+ allySpawned=0; enemySpawned=0; spawnTimer=0.3;
+ for(let i=0;i<2;i++) spawnShip();
+}
+
+function enterStage2(){
+ stagePhase="stage2";
+ secDefPresent=true; secDefTime=0;
+ secDefBubbleVisible=true; secDefBubbleTimer=3.5;
+ AMMO.stage2=true; AMMO.rechargeRate=0.12; AMMO.cost=1.4;
+ resetWaveSpawns();
+}
+
+function enterStage3(){
+ stagePhase="stage3";
+ treasPresent=true; treasTime=0;
+ treasBubbleVisible=true; treasBubbleTimer=3.5;
+ // keep hard ammo
+ AMMO.rechargeRate=0.10; AMMO.cost=1.5;
+ resetWaveSpawns();
+}
+
+function evaluateEnd(){
+ stagePhase="end";
+ endTimer=0;
+ const totalPassed=statAllyPass+statEnemyPass;
+ const okPass=totalPassed>=40;
+ const okSink=statEnemySunk>=12;
+ endResult=(okPass && okSink) ? "SUCCESS" : "FAIL";
+}
+
+function drawBackground(){
+ const g=ctx.createLinearGradient(0,0,0,H);
+ g.addColorStop(0,"#0a2a3e"); g.addColorStop(1,"#04121e");
+ ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+ ctx.globalAlpha=.13; ctx.strokeStyle="#9fe4f3"; ctx.lineWidth=1;
+ for(let y=H*.07;y<H;y+=38){
+  ctx.beginPath();
+  for(let x=0;x<W;x+=24){ctx.moveTo(x,y);ctx.quadraticCurveTo(x+12,y-3,x+24,y);}
+  ctx.stroke();
+ }
+ ctx.globalAlpha=1;
+ const land=ctx.createLinearGradient(0,0,W,H);
+ land.addColorStop(0,"#314737"); land.addColorStop(1,"#1d3028");
+ ctx.fillStyle=land;
+ const leftLandW=W*0.13, rightLandW=W*0.10;
+ ctx.fillRect(0,0,leftLandW,H); ctx.fillRect(W-rightLandW,0,rightLandW,H);
+ ctx.fillRect(0,0,W,H*.045); ctx.fillRect(0,H*.955,W,H*.045);
+ const penX=px(PATH.peninX), penTop=py(PATH.peninTop), penBot=py(PATH.peninBot), penMid=py(PATH.targetY), baseX=leftLandW;
+ ctx.beginPath();
+ ctx.moveTo(baseX, penTop-20);
+ ctx.quadraticCurveTo(baseX+20, penTop-5, penX-8, penMid-18);
+ ctx.quadraticCurveTo(penX+6, penMid-6, penX+4, penMid);
+ ctx.quadraticCurveTo(penX+6, penMid+6, penX-8, penMid+18);
+ ctx.quadraticCurveTo(baseX+20, penBot+5, baseX, penBot+20);
+ ctx.closePath(); ctx.fill();
+ ctx.strokeStyle="rgba(194,176,112,.65)"; ctx.lineWidth=3;
+ ctx.beginPath();
+ ctx.moveTo(baseX, penTop-20);
+ ctx.quadraticCurveTo(baseX+20, penTop-5, penX-8, penMid-18);
+ ctx.quadraticCurveTo(penX+6, penMid-6, penX+4, penMid);
+ ctx.quadraticCurveTo(penX+6, penMid+6, penX-8, penMid+18);
+ ctx.quadraticCurveTo(baseX+20, penBot+5, baseX, penBot+20);
+ ctx.stroke();
+ ctx.beginPath();
+ ctx.moveTo(leftLandW,0);ctx.lineTo(leftLandW,penTop-20);
+ ctx.moveTo(leftLandW,penBot+20);ctx.lineTo(leftLandW,H);
+ ctx.moveTo(W-rightLandW,0);ctx.lineTo(W-rightLandW,H);
+ ctx.moveTo(0,H*.045);ctx.lineTo(W,H*.045);
+ ctx.moveTo(0,H*.955);ctx.lineTo(W,H*.955);
+ ctx.stroke();
+ ctx.fillStyle="rgba(118,130,88,.45)";
+ landRocks.forEach(r=>{ctx.beginPath();ctx.arc(r.x,r.y,r.r,0,Math.PI*2);ctx.fill();});
+ ctx.strokeStyle="rgba(160,220,235,.22)"; ctx.lineWidth=3; ctx.setLineDash([7,8]);
+ ctx.beginPath();
+ ctx.moveTo(px(PATH.rightX),H); ctx.lineTo(px(PATH.rightX),py(PATH.topY));
+ ctx.lineTo(px(PATH.portX),py(PATH.portY)); ctx.lineTo(px(PATH.leftX),py(PATH.topY));
+ ctx.lineTo(px(PATH.leftX),py(PATH.peninTop)); ctx.lineTo(px(PATH.peninX)+12,py(PATH.targetY));
+ ctx.lineTo(px(PATH.leftX),py(PATH.peninBot)); ctx.lineTo(px(PATH.leftX),H);
+ ctx.stroke(); ctx.setLineDash([]);
+ ctx.save();
+ ctx.font="bold 18px Arial"; ctx.fillStyle="rgba(180,220,240,.55)"; ctx.textAlign="center";
+ ctx.fillText("HORMUZ", W*.52, H*.50);
+ ctx.font="10px Arial"; ctx.fillStyle="rgba(160,200,220,.4)";
+ ctx.fillText("Strait of Hormuz", W*.52, H*.50+16);
+ ctx.restore();
+ drawDefensePoint(px(PATH.playerTowerX), py(PATH.targetY), "PLAYER TOWER", "Peninsula Tip");
+}
+
+function drawDefensePoint(x,y,label,sub){
+ ctx.save();
+ ctx.fillStyle="#69715c"; ctx.strokeStyle="#c6bb87"; ctx.lineWidth=2;
+ ctx.beginPath(); ctx.arc(x,y,24,0,Math.PI*2); ctx.fill(); ctx.stroke();
+ ctx.fillStyle="#3f4b45"; ctx.fillRect(x-10,y-18,20,36);
+ ctx.fillStyle="#8d9b91"; ctx.fillRect(x-14,y-25,28,9);
+ ctx.strokeStyle="#aebbb2"; ctx.lineWidth=6; ctx.lineCap="round";
+ ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x+28,y); ctx.stroke();
+ ctx.lineCap="butt";
+ ctx.textAlign="center"; ctx.font="bold 10px Arial"; ctx.fillStyle="#f0f6ed";
+ ctx.fillText(label,x,y+43);
+ ctx.font="9px Arial"; ctx.fillStyle="rgba(235,245,238,.65)"; ctx.fillText(sub,x,y+55);
+ ctx.restore();
+}
+
+function drawPort(){
+ const x=px(PATH.portX),y=py(PATH.portY);
+ ctx.fillStyle="#8a7654";ctx.fillRect(x-W*.14,y,W*.28,18);
+ ctx.fillStyle="#c5ae7b";ctx.fillRect(x-W*.105,y-8,W*.21,8);
+ ctx.fillStyle="#dcebf0";ctx.font="bold 13px Arial";ctx.textAlign="center";
+ ctx.fillText("PORT",x,y-14);
+}
+
+function drawShip(s){
+ const size=s.shipSize;
+ ctx.save(); ctx.translate(s.x,s.y);
+ ctx.fillStyle=s.color;
+ ctx.beginPath();
+ if(s.kind==="lng"){
+   ctx.moveTo(-size*1.5,-size*.4); ctx.lineTo(size*1.0,-size*.4);
+   ctx.lineTo(size*1.45,size*.15); ctx.lineTo(size*.8,size*.7);
+   ctx.lineTo(-size*1.1,size*.7); ctx.lineTo(-size*1.5,size*.15);
+   ctx.closePath(); ctx.fill();
+   ctx.fillStyle="rgba(200,240,255,.55)";
+   ctx.beginPath(); ctx.ellipse(-size*.3,-size*.15,size*.45,size*.35,0,0,Math.PI*2); ctx.fill();
+   ctx.beginPath(); ctx.ellipse(size*.4,-size*.15,size*.4,size*.32,0,0,Math.PI*2); ctx.fill();
+ }else{
+   ctx.moveTo(-size*1.35,-size*.45); ctx.lineTo(size*.9,-size*.45);
+   ctx.lineTo(size*1.35,size*.25); ctx.lineTo(size*.75,size*.65);
+   ctx.lineTo(-size*.95,size*.65); ctx.lineTo(-size*1.35,size*.2);
+   ctx.closePath(); ctx.fill();
+ }
+ if(s.pattern==="stripe"){
+   ctx.save(); ctx.clip();
+   ctx.strokeStyle="rgba(255,255,255,.65)"; ctx.lineWidth=3;
+   for(let i=-40;i<45;i+=8){ctx.beginPath();ctx.moveTo(i,-24);ctx.lineTo(i+22,24);ctx.stroke();}
+   ctx.restore();
+ }else if(s.pattern==="lng"){
+   ctx.save(); ctx.clip();
+   ctx.strokeStyle="rgba(255,255,255,.4)"; ctx.lineWidth=2;
+   for(let i=-40;i<45;i+=10){ctx.beginPath();ctx.moveTo(i,-20);ctx.lineTo(i,20);ctx.stroke();}
+   ctx.restore();
+ }
+ ctx.fillStyle="#d7e4e8"; ctx.fillRect(-size*.5,-size*.95,size*1.0,size*.4);
+ ctx.fillStyle="#fff"; ctx.beginPath();
+ if(s.state==="MOVING_RIGHT_EDGE_UP"||s.state==="MOVING_TO_PORT"){
+  ctx.moveTo(0,-size*1.2);ctx.lineTo(-4,-size*.65);ctx.lineTo(4,-size*.65);
+ }else if(s.state==="MOVING_TO_LEFT_EDGE"){
+  ctx.moveTo(-size*1.5,0);ctx.lineTo(-size*.85,-4);ctx.lineTo(-size*.85,4);
+ }else if(s.state==="MOVING_AROUND_PENIN"){
+  ctx.moveTo(size*1.15,0);ctx.lineTo(size*.55,-4);ctx.lineTo(size*.55,4);
+ }else{
+  ctx.moveTo(0,size*1.2);ctx.lineTo(-4,size*.65);ctx.lineTo(4,size*.65);
+ }
+ ctx.closePath();ctx.fill();
+ ctx.fillStyle="rgba(235,250,255,.9)";
+ ctx.font="bold 9px Arial"; ctx.textAlign="center";
+ ctx.fillText((s.faction==="ally"?"ALLY":"ENEMY")+" "+(s.kind==="lng"?"LNG":"TANK")+" "+SIZE_DATA[s.sizeKey].label, 0, size+14);
+ ctx.font="8px Arial"; ctx.fillText(Math.round(s.speed), 0, size+24);
+ if(s.hitFlash>0){ctx.strokeStyle="#fff";ctx.lineWidth=3;ctx.beginPath();ctx.arc(0,0,size*1.5,0,Math.PI*2);ctx.stroke();}
+ ctx.restore();
+ if(s.state==="DOCKED_AT_PORT"){
+  ctx.fillStyle="rgba(255,255,255,.9)"; ctx.font="bold 11px Arial"; ctx.textAlign="center";
+  ctx.fillText("LOADING "+Math.max(0,s.portTimer).toFixed(1)+"s", s.x, s.y-size-12);
+ }
+}
+
+function drawAttackEffect(){
+ if(attackFlash<=0)return;
+ const alpha=Math.min(1,attackFlash/.18);
+ ctx.save(); ctx.globalAlpha=alpha;
+ ctx.strokeStyle="#fff"; ctx.lineWidth=4; ctx.setLineDash([10,8]);
+ if(attackSide==="right"){
+   const x=px(PATH.rightX); ctx.beginPath();ctx.moveTo(x,H*.15);ctx.lineTo(x,H*.90);ctx.stroke();
+ }else{
+   ctx.beginPath();
+   ctx.moveTo(px(PATH.leftX),H*.15); ctx.lineTo(px(PATH.leftX),py(PATH.peninTop));
+   ctx.lineTo(px(PATH.peninX)+12,py(PATH.targetY));
+   ctx.lineTo(px(PATH.leftX),py(PATH.peninBot)); ctx.lineTo(px(PATH.leftX),H*.90);
+   ctx.stroke();
+ }
+ ctx.setLineDash([]); ctx.restore();
+}
+
+function drawProjectiles(){
+ projectiles.forEach(p=>{
+   const progress=Math.max(0,Math.min(1,1-p.life/p.maxLife));
+   const alpha=Math.min(1,p.life<.18?p.life/.18:1);
+   const sx=p.startX,sy=p.startY,ex=p.tx,ey=p.ty;
+   const arcHeight=Math.max(70,Math.abs(ex-sx)*.28+Math.abs(ey-sy)*.12);
+   function arcPoint(t){const x=sx+(ex-sx)*t;const baseY=sy+(ey-sy)*t;return{x,y:baseY-4*arcHeight*t*(1-t)};}
+   const cur=arcPoint(progress), prev=arcPoint(Math.max(0,progress-.12));
+   ctx.save(); ctx.globalAlpha=alpha;
+   ctx.strokeStyle="rgba(255,226,140,.42)"; ctx.lineWidth=2; ctx.setLineDash([7,7]);
+   ctx.beginPath(); for(let i=0;i<=30;i++){const q=arcPoint(i/30);if(i===0)ctx.moveTo(q.x,q.y);else ctx.lineTo(q.x,q.y);}
+   ctx.stroke(); ctx.setLineDash([]);
+   ctx.strokeStyle="#fff0a3"; ctx.lineWidth=4;
+   ctx.beginPath(); ctx.moveTo(prev.x,prev.y); ctx.lineTo(cur.x,cur.y); ctx.stroke();
+   ctx.fillStyle="#fff4b5"; ctx.beginPath(); ctx.arc(cur.x,cur.y,6,0,Math.PI*2); ctx.fill();
+   ctx.restore();
+ });
+}
+
+function drawTowerStatus(x,y,tower,label){
+ const w=72,h=7;
+ ctx.fillStyle="rgba(0,0,0,.55)"; ctx.fillRect(x-w/2,y-43,w,h);
+ ctx.fillStyle="#65d88b"; ctx.fillRect(x-w/2,y-43,w*(tower.hp/tower.maxHp),h);
+ ctx.strokeStyle="rgba(255,255,255,.35)"; ctx.lineWidth=1; ctx.strokeRect(x-w/2,y-43,w,h);
+ ctx.textAlign="center"; ctx.font="bold 9px Arial"; ctx.fillStyle="#fff";
+ ctx.fillText(label,x,y-49);
+}
+
+function drawTrumpDot(){
+ const baseCx=W*0.50, baseCy=H*0.76;
+ const S=Math.max(4, Math.min(7, W/120));
+ const t=trumpTime;
+ let swayX=0,bounceY=0,lean=0,armPhase=0,faceVariant=0;
+ if(trumpMood==="happy"){
+   swayX=Math.sin(t*6.5)*2.2; bounceY=Math.abs(Math.sin(t*8))*1.8;
+   lean=Math.sin(t*6.5)*0.8; armPhase=Math.sin(t*9); faceVariant=Math.floor((t*3)%3);
+ }else if(trumpMood==="pain"){
+   swayX=Math.sin(t*20)*0.6; bounceY=Math.sin(t*15)*0.3; lean=Math.sin(t*12)*0.3;
+ }else{
+   swayX=Math.sin(t*2.2)*1.8; bounceY=Math.abs(Math.sin(t*2.2))*0.7;
+   lean=Math.sin(t*2.2)*0.5; armPhase=Math.sin(t*2.8);
+ }
+ const cx=baseCx+swayX*S, cy=baseCy-bounceY*S;
+ const pxl=(gx,gy,col)=>{
+   const lx=gx+lean*(gy+5)*0.08;
+   ctx.fillStyle=col; ctx.fillRect(cx+lx*S,cy+gy*S,S+0.5,S+0.5);
+ };
+ const hair="#f0d060",hairDark="#d4b040",skin="#f2c8a0",skinShadow="#e0b080";
+ const suit="#1c2a48",suitLight="#2a3c5c",tie="#d02020",eye="#1a1a1a";
+ const mouthHappy="#c42828",mouthPain="#5a2828",blush="#e88888",white="#f5f0e8";
+ for(let x=-7;x<=7;x++)pxl(x,-11,hair);
+ for(let x=-8;x<=8;x++){pxl(x,-10,hair);pxl(x,-9,hair);}
+ for(let x=-7;x<=7;x++)pxl(x,-8,hair);
+ for(let y=-7;y<=1;y++){pxl(-8,y,hair);pxl(8,y,hair);}
+ for(let y=-6;y<=0;y++){pxl(-7,y,hairDark);pxl(7,y,hairDark);}
+ for(let y=-7;y<=3;y++)for(let x=-6;x<=6;x++)pxl(x,y,skin);
+ for(let x=-5;x<=5;x++)pxl(x,4,skin);
+ for(let x=-3;x<=3;x++)pxl(x,5,skinShadow);
+ if(trumpMood==="happy"){
+   if(faceVariant===0){
+     for(let x=-4;x<=-1;x++)pxl(x,-4,hairDark);for(let x=1;x<=4;x++)pxl(x,-4,hairDark);
+     pxl(-4,-2,eye);pxl(-3,-1,eye);pxl(-2,-2,eye);pxl(2,-2,eye);pxl(3,-1,eye);pxl(4,-2,eye);
+     pxl(0,-1,skinShadow);pxl(0,0,skinShadow);pxl(-1,1,skinShadow);pxl(0,1,skinShadow);pxl(1,1,skinShadow);
+     pxl(-4,2,mouthHappy);pxl(-3,3,mouthHappy);pxl(-2,3,mouthHappy);pxl(-1,3,mouthHappy);
+     pxl(0,3,mouthHappy);pxl(1,3,mouthHappy);pxl(2,3,mouthHappy);pxl(3,3,mouthHappy);pxl(4,2,mouthHappy);
+     pxl(-2,3,white);pxl(-1,3,white);pxl(0,3,white);pxl(1,3,white);pxl(2,3,white);
+     pxl(-6,1,blush);pxl(6,1,blush);
+   }else if(faceVariant===1){
+     for(let x=-4;x<=-1;x++)pxl(x,-4,hairDark);for(let x=1;x<=4;x++)pxl(x,-4,hairDark);
+     pxl(-3,-2,eye);pxl(-2,-2,eye);pxl(2,-3,eye);pxl(3,-2,eye);pxl(2,-1,eye);
+     pxl(0,0,skinShadow);pxl(0,1,skinShadow);
+     pxl(-2,2,mouthHappy);pxl(-1,3,mouthHappy);pxl(0,3,mouthHappy);pxl(1,3,mouthHappy);pxl(2,2,mouthHappy);pxl(3,2,mouthHappy);
+     pxl(-1,3,white);pxl(0,3,white);pxl(1,3,white);pxl(6,0,blush);
+   }else{
+     for(let x=-4;x<=-1;x++)pxl(x,-5,hairDark);for(let x=1;x<=4;x++)pxl(x,-5,hairDark);
+     pxl(-3,-2,eye);pxl(-2,-2,eye);pxl(2,-2,eye);pxl(3,-2,eye);pxl(-3,-3,white);pxl(3,-3,white);
+     pxl(0,0,skinShadow);
+     pxl(-2,2,mouthHappy);pxl(-1,1,mouthHappy);pxl(0,1,mouthHappy);pxl(1,1,mouthHappy);pxl(2,2,mouthHappy);
+     pxl(-2,3,mouthHappy);pxl(-1,4,mouthHappy);pxl(0,4,mouthHappy);pxl(1,4,mouthHappy);pxl(2,3,mouthHappy);
+     pxl(-1,2,eye);pxl(0,2,eye);pxl(1,2,eye);pxl(-6,1,blush);pxl(6,1,blush);
+   }
+ }else if(trumpMood==="pain"){
+   pxl(-5,-4,hairDark);pxl(-4,-4,hairDark);pxl(-3,-5,hairDark);pxl(-2,-4,hairDark);
+   pxl(2,-4,hairDark);pxl(3,-5,hairDark);pxl(4,-4,hairDark);pxl(5,-4,hairDark);
+   pxl(-4,-2,eye);pxl(-2,-2,eye);pxl(-3,-1,eye);pxl(-3,-3,eye);
+   pxl(2,-2,eye);pxl(4,-2,eye);pxl(3,-1,eye);pxl(3,-3,eye);
+   pxl(0,0,skinShadow);pxl(0,1,skinShadow);
+   pxl(-3,3,mouthPain);pxl(-2,2,mouthPain);pxl(-1,2,mouthPain);pxl(0,2,mouthPain);pxl(1,2,mouthPain);pxl(2,2,mouthPain);pxl(3,3,mouthPain);
+   pxl(7,-5,"#8ec8e8");pxl(8,-4,"#8ec8e8");pxl(7,-3,"#8ec8e8");
+ }else{
+   for(let x=-4;x<=-1;x++)pxl(x,-4,hairDark);for(let x=1;x<=4;x++)pxl(x,-4,hairDark);
+   pxl(-3,-2,eye);pxl(-2,-2,eye);pxl(2,-2,eye);pxl(3,-2,eye);
+   pxl(0,-1,skinShadow);pxl(0,0,skinShadow);pxl(0,1,skinShadow);
+   const smileY=Math.sin(t*2.2)>0?3:2;
+   for(let x=-2;x<=2;x++)pxl(x,smileY,"#a05050");
+   if(Math.sin(t*2.2)>0.3){pxl(-3,2,"#a05050");pxl(3,2,"#a05050");}
+ }
+ for(let y=6;y<=11;y++)for(let x=-7;x<=7;x++)pxl(x,y,suit);
+ pxl(-3,6,suitLight);pxl(-2,6,white);pxl(-1,6,white);pxl(1,6,white);pxl(2,6,white);pxl(3,6,suitLight);
+ pxl(0,6,tie);pxl(0,7,tie);pxl(-1,8,tie);pxl(0,8,tie);pxl(1,8,tie);pxl(0,9,tie);pxl(0,10,tie);pxl(0,11,tie);
+ const armY=7+Math.round(armPhase*1.2);
+ pxl(-9,armY,suit);pxl(-10,armY+1,suit);pxl(-9,armY+1,skin);
+ pxl(9,armY,suit);pxl(10,armY+1,suit);pxl(9,armY+1,skin);
+ pxl(-10,armY+2,skin);pxl(10,armY+2,skin);
+ ctx.font="bold 11px Arial"; ctx.textAlign="center";
+ let label="TRUMP";
+ if(trumpMood==="happy"){label=["TRUMP  :D","TRUMP  ;D","TRUMP  !!"][faceVariant];ctx.fillStyle="#ffe080";}
+ else if(trumpMood==="pain"){label="TRUMP  :(";ctx.fillStyle="#ff9a9a";}
+ else ctx.fillStyle="rgba(255,230,150,.85)";
+ ctx.fillText(label,cx,cy+13*S+10);
+}
+
+function drawSecDef(){
+ if(!secDefPresent) return;
+ const S=Math.max(3.5, Math.min(6.5, W/130));
+ const baseCx=W*0.62, baseCy=H*0.76;
+ const jitter=Math.sin(secDefTime*11)*1.4 + Math.sin(secDefTime*17)*0.6;
+ const bob=Math.abs(Math.sin(secDefTime*8))*0.9;
+ const headBob=Math.sin(secDefTime*13)*0.5;
+ const cx=baseCx+jitter*S, cy=baseCy-bob*S;
+ const pxl=(gx,gy,col)=>{
+   ctx.fillStyle=col;
+   ctx.fillRect(cx+gx*S, cy+(gy+headBob*(gy<-2?1:0))*S, S+0.4, S+0.4);
+ };
+ const skin="#e8c4a0", hair="#3a2a1a", suit="#1a2030", shirt="#d8dce0";
+ const tie="#2a4a8a", eye="#1a1a1a", glasses="#2a2a2a";
+ for(let x=-5;x<=5;x++) pxl(x,-9,hair);
+ for(let x=-6;x<=6;x++) pxl(x,-8,hair);
+ for(let y=-7;y<=2;y++) for(let x=-5;x<=5;x++) pxl(x,y,skin);
+ for(let x=-4;x<=-1;x++) pxl(x,-3,glasses);
+ for(let x=1;x<=4;x++) pxl(x,-3,glasses);
+ pxl(-3,-2,eye); pxl(-2,-2,eye); pxl(2,-2,eye); pxl(3,-2,eye);
+ pxl(0,-3,glasses);
+ pxl(-2,1,"#8a5050"); pxl(-1,2,"#8a5050"); pxl(0,1,"#8a5050"); pxl(1,2,"#8a5050"); pxl(2,1,"#8a5050");
+ if(Math.sin(secDefTime*9)>0){ pxl(6,-6,"#8ec8e8"); pxl(7,-5,"#8ec8e8"); }
+ if(Math.sin(secDefTime*7+1)>0.3){ pxl(-7,-5,"#8ec8e8"); }
+ for(let y=3;y<=10;y++) for(let x=-6;x<=6;x++) pxl(x,y,suit);
+ pxl(-2,3,shirt); pxl(-1,3,shirt); pxl(0,3,shirt); pxl(1,3,shirt); pxl(2,3,shirt);
+ pxl(0,3,tie); pxl(0,4,tie); pxl(0,5,tie); pxl(0,6,tie);
+ const armOff=Math.round(Math.sin(secDefTime*10)*1.5);
+ pxl(-8,4+armOff,suit); pxl(-9,5+armOff,suit); pxl(-8,5+armOff,skin);
+ pxl(8,4-armOff,suit); pxl(9,5-armOff,suit); pxl(8,5-armOff,skin);
+ ctx.font="bold 9px Arial"; ctx.textAlign="center";
+ ctx.fillStyle="rgba(200,210,230,.85)";
+ ctx.fillText("SECDEF", cx, cy+12*S+8);
+ if(secDefBubbleVisible || AMMO.current < AMMO.cost){
+   const bx=cx, by=cy-14*S;
+   const text="Sir, we have no shells...";
+   ctx.font="bold 11px Arial";
+   const tw=ctx.measureText(text).width;
+   const bw=tw+16, bh=28;
+   ctx.fillStyle="rgba(255,255,255,.92)";
+   ctx.strokeStyle="rgba(40,40,60,.7)"; ctx.lineWidth=2;
+   ctx.beginPath();
+   if(ctx.roundRect) ctx.roundRect(bx-bw/2, by-bh, bw, bh, 8); else ctx.rect(bx-bw/2, by-bh, bw, bh);
+   ctx.fill(); ctx.stroke();
+   ctx.beginPath(); ctx.moveTo(bx-6, by); ctx.lineTo(bx, by+10); ctx.lineTo(bx+8, by); ctx.closePath(); ctx.fill(); ctx.stroke();
+   ctx.fillStyle="#222"; ctx.textAlign="center";
+   ctx.fillText(text, bx, by-bh/2+5);
+ }
+}
+
+// Treasury Secretary — left side of Trump
+function drawTreasury(){
+ if(!treasPresent) return;
+ const S=Math.max(3.5, Math.min(6.5, W/130));
+ const baseCx=W*0.38, baseCy=H*0.76;
+ const jitter=Math.sin(treasTime*9)*1.1;
+ const bob=Math.abs(Math.sin(treasTime*6))*0.7;
+ const cx=baseCx+jitter*S, cy=baseCy-bob*S;
+ const pxl=(gx,gy,col)=>{
+   ctx.fillStyle=col;
+   ctx.fillRect(cx+gx*S, cy+gy*S, S+0.4, S+0.4);
+ };
+ const skin="#f0d0b0", hair="#c8a060", suit="#2a1a10", shirt="#f0e8d8";
+ const tie="#8a2020", eye="#1a1a1a";
+ // hair (lighter/gray-blond)
+ for(let x=-5;x<=5;x++) pxl(x,-9,hair);
+ for(let x=-6;x<=6;x++) pxl(x,-8,hair);
+ for(let y=-7;y<=2;y++) for(let x=-5;x<=5;x++) pxl(x,y,skin);
+ pxl(-3,-2,eye); pxl(-2,-2,eye); pxl(2,-2,eye); pxl(3,-2,eye);
+ // worried
+ pxl(-2,1,"#8a5050"); pxl(-1,2,"#8a5050"); pxl(0,1,"#8a5050"); pxl(1,2,"#8a5050"); pxl(2,1,"#8a5050");
+ if(Math.sin(treasTime*8)>0){ pxl(6,-5,"#8ec8e8"); }
+ for(let y=3;y<=10;y++) for(let x=-6;x<=6;x++) pxl(x,y,suit);
+ pxl(-2,3,shirt); pxl(-1,3,shirt); pxl(0,3,shirt); pxl(1,3,shirt); pxl(2,3,shirt);
+ pxl(0,3,tie); pxl(0,4,tie); pxl(0,5,tie);
+ const armOff=Math.round(Math.sin(treasTime*7)*1.2);
+ pxl(-8,5+armOff,suit); pxl(-8,6+armOff,skin);
+ pxl(8,5-armOff,suit); pxl(8,6-armOff,skin);
+ ctx.font="bold 9px Arial"; ctx.textAlign="center";
+ ctx.fillStyle="rgba(230,210,180,.9)";
+ ctx.fillText("TREASURY", cx, cy+12*S+8);
+
+ if(treasBubbleVisible){
+   const bx=cx, by=cy-14*S;
+   const text="Sir... we have no oil.";
+   ctx.font="bold 11px Arial";
+   const tw=ctx.measureText(text).width;
+   const bw=tw+16, bh=28;
+   ctx.fillStyle="rgba(255,255,255,.92)";
+   ctx.strokeStyle="rgba(40,40,60,.7)"; ctx.lineWidth=2;
+   ctx.beginPath();
+   if(ctx.roundRect) ctx.roundRect(bx-bw/2, by-bh, bw, bh, 8); else ctx.rect(bx-bw/2, by-bh, bw, bh);
+   ctx.fill(); ctx.stroke();
+   ctx.beginPath(); ctx.moveTo(bx-6, by); ctx.lineTo(bx, by+10); ctx.lineTo(bx+8, by); ctx.closePath(); ctx.fill(); ctx.stroke();
+   ctx.fillStyle="#222"; ctx.textAlign="center";
+   ctx.fillText(text, bx, by-bh/2+5);
+ }
+}
+
+function drawStageTitle(){
+ if(stagePhase!=="title2" && stagePhase!=="title3") return;
+ const alpha=Math.min(1, stageTitleTimer>0.4 ? 1 : stageTitleTimer/0.4);
+ ctx.save();
+ ctx.globalAlpha=alpha;
+ ctx.fillStyle="rgba(0,10,20,.55)";
+ ctx.fillRect(0,0,W,H);
+ ctx.textAlign="center";
+ ctx.font="bold 48px Arial";
+ ctx.fillStyle="#ffe8a0";
+ ctx.strokeStyle="rgba(0,0,0,.5)";
+ ctx.lineWidth=6;
+ ctx.strokeText(stageTitleLabel, W/2, H*.42);
+ ctx.fillText(stageTitleLabel, W/2, H*.42);
+ ctx.font="16px Arial";
+ ctx.fillStyle="rgba(220,240,255,.85)";
+ if(stagePhase==="title2") ctx.fillText("Shell shortage incoming...", W/2, H*.42+36);
+ else ctx.fillText("Oil crisis... Mission critical", W/2, H*.42+36);
+ ctx.restore();
+}
+
+function drawEndScreen(){
+ if(stagePhase!=="end") return;
+ ctx.save();
+ ctx.fillStyle="rgba(0,8,16,.7)";
+ ctx.fillRect(0,0,W,H);
+ ctx.textAlign="center";
+ ctx.font="bold 56px Arial";
+ ctx.lineWidth=8;
+ if(endResult==="SUCCESS"){
+   ctx.fillStyle="#7dffb2";
+   ctx.strokeStyle="rgba(0,40,20,.6)";
+   ctx.strokeText("SUCCESS", W/2, H*.40);
+   ctx.fillText("SUCCESS", W/2, H*.40);
+ }else{
+   ctx.fillStyle="#ff6a6a";
+   ctx.strokeStyle="rgba(40,0,0,.6)";
+   ctx.strokeText("FAIL", W/2, H*.40);
+   ctx.fillText("FAIL", W/2, H*.40);
+ }
+ ctx.font="14px Arial";
+ ctx.fillStyle="rgba(230,245,255,.9)";
+ const totalPassed=statAllyPass+statEnemyPass;
+ ctx.fillText("Passed ships: "+totalPassed+" / 40 needed", W/2, H*.40+40);
+ ctx.fillText("Enemy sunk: "+statEnemySunk+" / 12 needed", W/2, H*.40+62);
+ ctx.fillText("SCORE  "+score, W/2, H*.40+90);
+ ctx.restore();
+}
+
+function drawHUD(){
+ ctx.textAlign="left"; ctx.font="12px Arial";
+ ctx.fillStyle="rgba(220,245,250,.72)";
+ ctx.fillText("RIGHT ↑ Far  "+SHELL_DATA.farFlightTime.toFixed(2)+"s",8,H*.18);
+ ctx.fillText("LEFT ↓ Near  "+SHELL_DATA.nearFlightTime.toFixed(2)+"s",8,H*.82);
+ ctx.textAlign="right";
+ ctx.fillStyle="rgba(255,255,255,.8)"; ctx.font="bold 14px Arial";
+ ctx.fillText("SCORE "+score,W-10,34);
+ ctx.textAlign="left"; ctx.font="11px Arial";
+ ctx.fillStyle="rgba(200,230,255,.7)";
+ ctx.fillText("Ally "+allySpawned+"/"+MAX_ALLY+"  Enemy "+enemySpawned+"/"+MAX_ENEMY,10,34);
+ if(AMMO.stage2 || stagePhase==="stage3"){
+  ctx.fillStyle="rgba(255,160,120,.85)";
+  const lab=stagePhase==="stage3"?"STAGE 3 — Oil crisis":"STAGE 2 — Rapid shell drain";
+  ctx.fillText(lab,10,50);
+ }
+ // mission goals always visible in later stages
+ if(stagePhase==="stage2"||stagePhase==="stage3"||stagePhase==="end"){
+  ctx.font="10px Arial";
+  ctx.fillStyle="rgba(200,230,255,.65)";
+  const tp=statAllyPass+statEnemyPass;
+  ctx.fillText("Pass "+tp+"/40   Sink "+statEnemySunk+"/12",10,66);
+ }
+ if(messageTimer>0){
+  ctx.textAlign="center"; ctx.fillStyle="#ffe8a3"; ctx.font="bold 15px Arial";
+  ctx.fillText(message,W/2,H*.64);
+ }
+}
+
+let last=performance.now();
+function loop(now){
+ let dt=Math.min((now-last)/1000,.05); last=now;
+ trumpTime+=dt;
+ if(secDefPresent) secDefTime+=dt;
+ if(treasPresent) treasTime+=dt;
+
+ if(AMMO.current<AMMO.max){
+   AMMO.current=Math.min(AMMO.max, AMMO.current+AMMO.rechargeRate*dt);
+   updateAmmoUI();
+ }
+
+ if(secDefPresent){
+   if(AMMO.current < AMMO.cost){
+     secDefBubbleVisible=true;
+     secDefBubbleTimer-=dt; if(secDefBubbleTimer<=0) secDefBubbleTimer=2.8;
+   }else{
+     secDefBubbleTimer-=dt; if(secDefBubbleTimer<=0) secDefBubbleVisible=false;
+   }
+ }
+ if(treasPresent){
+   treasBubbleTimer-=dt;
+   if(treasBubbleTimer<=0){
+     treasBubbleVisible=!treasBubbleVisible;
+     treasBubbleTimer=treasBubbleVisible?3.2:1.5;
+   }
+ }
+
+ // spawning during combat phases
+ if(stagePhase==="wave1" || stagePhase==="stage2" || stagePhase==="stage3"){
+   spawnTimer-=dt;
+   if(spawnTimer<=0){ spawnShip(); spawnTimer=2.4; }
+ }
+
+ // transitions
+ if(stagePhase==="wave1" && waveDone()){
+   stagePhase="title2"; stageTitleLabel="STAGE 2"; stageTitleTimer=2.5;
+ }else if(stagePhase==="title2"){
+   stageTitleTimer-=dt;
+   if(stageTitleTimer<=0) enterStage2();
+ }else if(stagePhase==="stage2" && waveDone()){
+   stagePhase="title3"; stageTitleLabel="STAGE 3"; stageTitleTimer=2.5;
+ }else if(stagePhase==="title3"){
+   stageTitleTimer-=dt;
+   if(stageTitleTimer<=0) enterStage3();
+ }else if(stagePhase==="stage3" && waveDone()){
+   evaluateEnd();
+ }
+
+ ships.forEach(s=>updateShip(s,dt));
+ ships=ships.filter(s=>s.alive);
+ towerState.player.cooldown=Math.max(0,towerState.player.cooldown-dt);
+ updateProjectiles(dt);
+ explosions.forEach(e=>e.life-=dt);
+ explosions=explosions.filter(e=>e.life>0);
+ if(trumpMoodTimer>0){trumpMoodTimer-=dt;if(trumpMoodTimer<=0)trumpMood="neutral";}
+ if(messageTimer>0)messageTimer-=dt;
+ if(attackFlash>0)attackFlash-=dt;
+ if(stagePhase==="end") endTimer+=dt;
+
+ drawBackground(); drawPort(); drawAttackEffect();
+ drawTowerStatus(px(PATH.playerTowerX),py(PATH.playerTowerY),towerState.player,"PLAYER");
+ ships.forEach(drawShip); drawProjectiles();
+ explosions.forEach(e=>{
+   const t=1-e.life/e.maxLife,r=20+t*90,a=Math.max(0,1-t);
+   ctx.save(); ctx.globalAlpha=a*.85;
+   const g=ctx.createRadialGradient(e.x,e.y,0,e.x,e.y,r);
+   g.addColorStop(0,"#fff6c8");g.addColorStop(.35,"#ff9a3c");g.addColorStop(.7,"#ff4a2a");g.addColorStop(1,"rgba(255,80,40,0)");
+   ctx.fillStyle=g; ctx.beginPath(); ctx.arc(e.x,e.y,r,0,Math.PI*2); ctx.fill();
+   ctx.restore();
+ });
+ drawTreasury();
+ drawTrumpDot();
+ drawSecDef();
+ drawStageTitle();
+ drawEndScreen();
+ drawHUD();
+ requestAnimationFrame(loop);
+}
+
+resize();
+for(let i=0;i<2;i++){spawnShip();ships[i].y=py(1.05-i*.22);}
+updateStatsUI(); updateAmmoUI();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
