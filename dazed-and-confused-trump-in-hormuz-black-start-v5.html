@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Trump in Hormuz</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#071522;font-family:Arial,sans-serif}
+#game{display:block;width:100%;height:100%;touch-action:none}
+.attack{position:fixed;bottom:20px;width:96px;height:58px;border-radius:16px;border:1px solid rgba(255,255,255,.28);background:rgba(12,38,55,.88);color:#fff;font-weight:bold;font-size:14px;z-index:4;user-select:none;box-shadow:0 5px 18px rgba(0,0,0,.28)}
+.attack:active{transform:scale(.94);background:rgba(35,80,105,.95)}
+#leftAttack{left:18px}#rightAttack{right:18px}
+#ammoBox{position:fixed;left:50%;bottom:68px;transform:translateX(-50%);z-index:3;pointer-events:none;background:rgba(0,15,28,.82);padding:6px 12px;border-radius:10px;border:1px solid rgba(150,220,255,.25);min-width:200px}
+#ammoLabel{color:#dff7ff;font-size:10px;font-weight:bold;text-align:center;margin-bottom:4px}
+#ammoBarBg{width:100%;height:10px;background:rgba(0,0,0,.45);border-radius:5px;overflow:hidden}
+#ammoBarFill{height:100%;width:100%;background:linear-gradient(90deg,#3ecf8e,#7dffb2);border-radius:5px;transition:width .15s linear}
+#poopBox{position:fixed;left:50%;bottom:42px;transform:translateX(-50%);z-index:3;pointer-events:none;display:none;background:rgba(0,15,28,.82);padding:5px 12px;border-radius:10px;border:1px solid rgba(180,140,80,.35);min-width:200px}
+#poopLabel{color:#e8d4a8;font-size:10px;font-weight:bold;text-align:center;margin-bottom:3px}
+#poopBarBg{width:100%;height:9px;background:rgba(0,0,0,.45);border-radius:5px;overflow:hidden}
+#poopBarFill{height:100%;width:0%;background:linear-gradient(90deg,#8a6a30,#c4a050);border-radius:5px;transition:width .12s linear}
+#legend{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);color:rgba(230,250,255,.7);font-size:10px;z-index:3;pointer-events:none;text-align:center;line-height:1.35;white-space:nowrap}
+#stats{position:fixed;left:50%;bottom:2px;transform:translateX(-50%);display:flex;gap:8px;z-index:3;pointer-events:none;font-size:10px;font-weight:bold;white-space:nowrap}
+#stats span{background:rgba(0,15,28,.78);padding:3px 8px;border-radius:8px;border:1px solid rgba(150,220,255,.22);color:#e8f6ff}
+#stats .enemy-sunk{color:#ff9b9b}#stats .ally-sunk{color:#ffc27a}#stats .ally-pass{color:#8dffb0}#stats .enemy-pass{color:#ff8f8f}
+@media(min-width:700px){.attack{width:112px;height:64px;font-size:15px}#stats{font-size:11px;gap:10px}#ammoBox,#poopBox{min-width:220px}}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<button id="leftAttack" class="attack">◀ Near</button>
+<button id="rightAttack" class="attack">Far ▶</button>
+<div id="ammoBox"><div id="ammoLabel">Tomahawk Gauge</div><div id="ammoBarBg"><div id="ammoBarFill"></div></div></div>
+<div id="poopBox"><div id="poopLabel">Toilet Gauge</div><div id="poopBarBg"><div id="poopBarFill"></div></div></div>
+<div id="legend">PC: ← Near &nbsp; → Far &nbsp;|&nbsp; <b>Space = Skip Stage</b> &nbsp;|&nbsp; Mobile: buttons</div>
+<div id="stats">
+<span class="enemy-sunk">Enemy Sunk <b id="statEnemySunk">0</b></span>
+<span class="ally-sunk">Ally Sunk <b id="statAllySunk">0</b></span>
+<span class="ally-pass">Ally Passed <b id="statAllyPass">0</b></span>
+<span class="enemy-pass">Enemy Passed <b id="statEnemyPass">0</b></span>
+</div>
+<script>
+"use strict";
+const canvas=document.getElementById("game"),ctx=canvas.getContext("2d");
+let W=0,H=0,dpr=1;
+const PATH={rightX:.88,leftX:.16,peninX:.26,topY:.035,portX:.50,portY:.035,bottomY:1.06,targetY:.50,peninTop:.38,peninBot:.62,playerTowerX:.26,playerTowerY:.50};
+const SIZE_DATA={S:{label:"S",size:11,speedMul:1.25},M:{label:"M",size:15,speedMul:1.0},L:{label:"L",size:22,speedMul:0.62}};
+const SHIP={minSpeed:70,maxSpeed:145,portStopDuration:3};
+let ships=[],nextId=1,spawnTimer=0,score=0,message="",messageTimer=0,attackFlash=0,attackSide="";
+let projectiles=[],explosions=[];
+let statEnemySunk=0,statAllySunk=0,statAllyPass=0,statEnemyPass=0,allySpawned=0,enemySpawned=0;
+const MAX_ALLY=20,MAX_ENEMY=20;
+let s3AllyPass=0,s3EnemyPass=0,s3EnemySunk=0;
+const AMMO={max:6,current:6,rechargeRate:0.35,cost:1,stage2:false};
+const SHELL_DATA={nearFlightTime:1.15,farFlightTime:2.0};
+let towerState={player:{hp:100,maxHp:100,cooldown:0}},landRocks=[];
+let trumpMood="neutral",trumpMoodTimer=0,trumpTime=0;
+let stagePhase="intro",stageTitleTimer=0,stageTitleLabel="";
+let introTimer=0;
+let secDefPresent=false,secDefTime=0,secDefBubbleTimer=0,secDefBubbleVisible=false;
+let treasPresent=false,treasTime=0,treasBubbleTimer=0,treasBubbleVisible=false,endResult=null;
+let admiralPresent=false,admiralTime=0,admiralBubble=false,admiralBubbleTimer=0,admiralBubbleText="",admiralDeparting=false,admiralExitProgress=0;
+let carrierPresent=false,carrierY=0,carrierLeaving=false,carrierGone=false,carrierReturnTimer=0;
+let f35s=[],f35SpawnTimer=0;
+let poopGauge=0,poopMax=10,toiletClogged=false,cloggedTimer=0,poopCritical=false;
+const POOP_FILL_RATE_S4=0.018,POOP_FILL_RATE_S5=0.35,CLOGGED_LEAVE_TIME=8;
+let s5AllyKilledByShahed=0;
+let stage4IntroPhase=""; // secdef | trump | rise | done
+let stage4IntroTimer=0;
+let carrierRiseProgress=0;
+let audioCtx=null;
+
+function playFanfare(){
+  try{
+    if(!audioCtx) audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+    const now=audioCtx.currentTime;
+    const notes=[196,246.94,293.66,392,493.88,587.33,784];
+    notes.forEach((freq,i)=>{
+      const o=audioCtx.createOscillator();
+      const g=audioCtx.createGain();
+      o.type='sawtooth';
+      o.frequency.value=freq;
+      g.gain.setValueAtTime(0, now+i*0.12);
+      g.gain.linearRampToValueAtTime(0.12, now+i*0.12+0.05);
+      g.gain.exponentialRampToValueAtTime(0.001, now+i*0.12+0.8);
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start(now+i*0.12); o.stop(now+i*0.12+0.9);
+    });
+    // low brass pad
+    const o2=audioCtx.createOscillator();
+    const g2=audioCtx.createGain();
+    o2.type='triangle'; o2.frequency.value=98;
+    g2.gain.setValueAtTime(0.08, now);
+    g2.gain.exponentialRampToValueAtTime(0.001, now+2.5);
+    o2.connect(g2); g2.connect(audioCtx.destination);
+    o2.start(now); o2.stop(now+2.6);
+  }catch(e){}
+}
+
+let trucks=[],drones=[],truckSpawnTimer=0;
+
+function updateStatsUI(){document.getElementById("statEnemySunk").textContent=statEnemySunk;document.getElementById("statAllySunk").textContent=statAllySunk;document.getElementById("statAllyPass").textContent=statAllyPass;document.getElementById("statEnemyPass").textContent=statEnemyPass;}
+function updateAmmoUI(){const pct=Math.max(0,Math.min(1,AMMO.current/AMMO.max))*100;const el=document.getElementById("ammoBarFill");el.style.width=pct+"%";if(AMMO.current<0.15)el.style.background="linear-gradient(90deg,#8a2020,#c94a4a)";else if(AMMO.current<1.5)el.style.background="linear-gradient(90deg,#c94a4a,#ff8a6a)";else if(AMMO.current<3.5)el.style.background="linear-gradient(90deg,#c9a24a,#ffe08a)";else el.style.background="linear-gradient(90deg,#3ecf8e,#7dffb2)";document.getElementById("ammoLabel").textContent="Tomahawk Gauge  "+AMMO.current.toFixed(1)+" / "+AMMO.max;}
+function updatePoopUI(){const box=document.getElementById("poopBox");if(stagePhase==="stage4"||stagePhase==="stage5"||stagePhase==="end")box.style.display="block";else box.style.display="none";const pct=Math.max(0,Math.min(1,poopGauge/poopMax))*100;document.getElementById("poopBarFill").style.width=pct+"%";if(poopCritical){document.getElementById("poopLabel").textContent="CRITICAL — CVN departing!";document.getElementById("poopBarFill").style.background="linear-gradient(90deg,#a01010,#ff3030)";}else if(toiletClogged){document.getElementById("poopLabel").textContent="TOILET CLOGGED!";document.getElementById("poopBarFill").style.background="linear-gradient(90deg,#5a3a10,#8a6020)";}else{document.getElementById("poopLabel").textContent="Toilet Gauge  "+poopGauge.toFixed(1)+" / "+poopMax;document.getElementById("poopBarFill").style.background="linear-gradient(90deg,#8a6a30,#c4a050)";}}
+function buildLandRocks(){landRocks=[];const leftLandW=W*0.13,rightLandW=W*0.10;for(let i=0;i<36;i++){const side=i%4;let x,y,r;if(side===0){x=6+Math.random()*leftLandW*.85;y=Math.random()*H;r=2+Math.random()*4;}else if(side===1){x=W-rightLandW+Math.random()*rightLandW*.9;y=Math.random()*H;r=2+Math.random()*4;}else if(side===2){x=Math.random()*W;y=5+Math.random()*H*.03;r=2+Math.random()*3;}else{x=Math.random()*W;y=H*.96+Math.random()*H*.03;r=2+Math.random()*3;}landRocks.push({x,y,r});}}
+function resize(){dpr=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;canvas.width=Math.floor(W*dpr);canvas.height=Math.floor(H*dpr);canvas.style.width=W+"px";canvas.style.height=H+"px";ctx.setTransform(dpr,0,0,dpr,0,0);buildLandRocks();if(carrierPresent&&!carrierLeaving)carrierY=H*0.42;}
+addEventListener("resize",resize);const px=v=>v*W,py=v=>v*H;
+
+function pickShipConfig(){if(Math.random()<0.12)return{kind:"lng",sizeKey:"L",faction:Math.random()<0.55?"enemy":"ally"};const r=Math.random();return{kind:"tanker",sizeKey:r<0.35?"S":r<0.7?"M":"L",faction:Math.random()<0.5?"enemy":"ally"};}
+function createShip(){const cfg=pickShipConfig(),sd=SIZE_DATA[cfg.sizeKey],speed=(SHIP.minSpeed+Math.random()*(SHIP.maxSpeed-SHIP.minSpeed))*sd.speedMul;let color,pattern;if(cfg.kind==="lng"){if(cfg.faction==="enemy"){color="#3aa8d4";pattern="lng";}else{color="#9ad8f0";pattern="stripe";}}else if(cfg.faction==="enemy"){color=cfg.sizeKey==="L"?"#2d9a5c":cfg.sizeKey==="M"?"#39b86d":"#4ecf80";pattern="solid";}else{color=["#4aa879","#d5a84c","#d76b63"][Math.floor(Math.random()*3)];pattern="stripe";}return{id:nextId++,x:px(PATH.rightX),y:py(1.05),state:"MOVING_RIGHT_EDGE_UP",portTimer:0,faction:cfg.faction,kind:cfg.kind,sizeKey:cfg.sizeKey,shipSize:sd.size,color,pattern,alive:true,hitFlash:0,speed,edgeOffset:(Math.random()-.5)*W*.06};}
+function spawnShip(){if(allySpawned>=MAX_ALLY&&enemySpawned>=MAX_ENEMY)return;for(let a=0;a<12;a++){const s=createShip();if(s.faction==="ally"&&allySpawned>=MAX_ALLY)continue;if(s.faction==="enemy"&&enemySpawned>=MAX_ENEMY)continue;if(s.faction==="ally")allySpawned++;else enemySpawned++;ships.push(s);return;}}
+function moveToward(s,tx,ty,dt){const dx=tx-s.x,dy=ty-s.y,dist=Math.hypot(dx,dy),step=s.speed*dt;if(dist<=step){s.x=tx;s.y=ty;return true;}s.x+=dx/dist*step;s.y+=dy/dist*step;return false;}
+function impactPointForShip(s,side){const ty=py(PATH.targetY);if(side==="right")return{x:px(PATH.rightX)+s.edgeOffset,y:ty};return{x:px(PATH.peninX)+12+Math.abs(s.edgeOffset)*.35,y:ty};}
+function setTrumpMood(mood){trumpMood=mood;trumpMoodTimer=2.2;}
+function onPlayerKillEnemy(){if(stagePhase==="stage4"||stagePhase==="stage5"){poopGauge=Math.max(0,poopGauge-1.5);if(poopGauge<poopMax*0.9){toiletClogged=false;poopCritical=false;cloggedTimer=0;if(!carrierGone)admiralBubble=false;}updatePoopUI();}}
+function sinkShip(s,fromChain,byF35){if(!s.alive)return;s.alive=false;s.hitFlash=.55;if(s.faction==="enemy"){score+=s.kind==="lng"?200:100;statEnemySunk++;if(stagePhase==="stage3")s3EnemySunk++;message=s.kind==="lng"?"Enemy LNG BOOM! +200":"Enemy Sunk! +100";setTrumpMood("happy");if(!byF35)onPlayerKillEnemy();}else{score=Math.max(0,score-(s.kind==="lng"?250:150));statAllySunk++;message=s.kind==="lng"?"Ally LNG BOOM! -250":"Ally Sunk! -150";setTrumpMood("pain");}messageTimer=1.1;updateStatsUI();if(s.kind==="lng"){explosions.push({x:s.x,y:s.y,life:0.9,maxLife:0.9});ships.forEach(o=>{if(!o.alive||o.id===s.id)return;if(Math.hypot(o.x-s.x,o.y-s.y)<95)sinkShip(o,true,byF35);});if(!fromChain)message=s.faction==="enemy"?"Enemy LNG Chain!":"Ally LNG Chain!";}}
+function updateProjectiles(dt){projectiles.forEach(p=>{p.life-=dt;const progress=Math.min(1,1-p.life/p.maxLife);p.x=p.startX+(p.tx-p.startX)*progress;p.y=p.startY+(p.ty-p.startY)*progress;if(p.life<=0&&!p.resolved){p.resolved=true;let hit=null,best=32;ships.forEach(s=>{if(!s.alive)return;if(p.side==="right"){if(!(s.state==="MOVING_RIGHT_EDGE_UP"||s.state==="MOVING_TO_PORT"))return;}else{if(!(s.state==="MOVING_LEFT_EDGE_DOWN"||s.state==="MOVING_AROUND_PENIN"||s.state==="MOVING_LEFT_AFTER_PENIN"||s.state==="MOVING_LEFT_EXIT"))return;}const d=Math.hypot(s.x-p.tx,s.y-p.ty);if(d<best){best=d;hit=s;}});if(hit)sinkShip(hit,false,false);else{message="Miss!";messageTimer=.6;}}});projectiles=projectiles.filter(p=>!p.resolved);}
+function updateShip(s,dt){switch(s.state){case"MOVING_RIGHT_EDGE_UP":if(moveToward(s,px(PATH.rightX)+s.edgeOffset,py(PATH.topY),dt))s.state="MOVING_TO_PORT";break;case"MOVING_TO_PORT":if(moveToward(s,px(PATH.portX),py(PATH.portY),dt)){s.state="DOCKED_AT_PORT";s.portTimer=SHIP.portStopDuration;}break;case"DOCKED_AT_PORT":s.portTimer-=dt;if(s.portTimer<=0)s.state="MOVING_TO_LEFT_EDGE";break;case"MOVING_TO_LEFT_EDGE":if(moveToward(s,px(PATH.leftX)+s.edgeOffset,py(PATH.topY),dt))s.state="MOVING_LEFT_EDGE_DOWN";break;case"MOVING_LEFT_EDGE_DOWN":if(moveToward(s,px(PATH.leftX)+s.edgeOffset,py(PATH.peninTop),dt))s.state="MOVING_AROUND_PENIN";break;case"MOVING_AROUND_PENIN":if(moveToward(s,px(PATH.peninX)+12+Math.abs(s.edgeOffset)*.35,py(PATH.targetY),dt))s.state="MOVING_LEFT_AFTER_PENIN";break;case"MOVING_LEFT_AFTER_PENIN":if(moveToward(s,px(PATH.leftX)+s.edgeOffset,py(PATH.peninBot),dt))s.state="MOVING_LEFT_EXIT";break;case"MOVING_LEFT_EXIT":if(moveToward(s,px(PATH.leftX)+s.edgeOffset,py(PATH.bottomY),dt)){if(s.faction==="ally"){statAllyPass++;if(stagePhase==="stage3")s3AllyPass++;}else{statEnemyPass++;if(stagePhase==="stage3")s3EnemyPass++;}updateStatsUI();s.alive=false;}break;}if(s.hitFlash>0)s.hitFlash-=dt;}
+function attack(side){if(stagePhase==="end"||stagePhase.startsWith("title")||stagePhase==="stage4intro")return;if(AMMO.current<AMMO.cost){message="No Tomahawks!";messageTimer=.5;return;}if(towerState.player.cooldown>0){message="Reloading...";messageTimer=.45;return;}const candidates=ships.filter(s=>{if(!s.alive)return false;if(side==="right")return(s.state==="MOVING_RIGHT_EDGE_UP"||s.state==="MOVING_TO_PORT")&&s.y>H*.1&&s.y<H*.95;return(s.state==="MOVING_LEFT_EDGE_DOWN"||s.state==="MOVING_AROUND_PENIN"||s.state==="MOVING_LEFT_AFTER_PENIN"||s.state==="MOVING_LEFT_EXIT")&&s.y>H*.1&&s.y<H*.95;});if(!candidates.length){message=side==="right"?"Far: no target":"Near: no target";messageTimer=.8;return;}const attackY=H*PATH.targetY;const target=candidates.reduce((a,b)=>Math.abs(a.y-attackY)<Math.abs(b.y-attackY)?a:b);AMMO.current-=AMMO.cost;updateAmmoUI();towerState.player.cooldown=.45;const towerX=px(PATH.playerTowerX),towerY=py(PATH.targetY);const imp=impactPointForShip(target,side);const flightTime=side==="left"?SHELL_DATA.nearFlightTime:SHELL_DATA.farFlightTime;projectiles.push({x:towerX,y:towerY,startX:towerX,startY:towerY,tx:imp.x,ty:imp.y,target:null,life:flightTime,maxLife:flightTime,side});attackFlash=.18;attackSide=side;message=(side==="right"?"Far":"Near")+" Tomahawk fired";messageTimer=.7;}
+function bindAttack(id,side){const el=document.getElementById(id);const fire=e=>{e.preventDefault();e.stopPropagation();attack(side);};el.addEventListener("pointerdown",fire,{passive:false});el.addEventListener("click",fire);}
+bindAttack("leftAttack","left");bindAttack("rightAttack","right");
+function clearWave(){ships=[];projectiles=[];explosions=[];f35s=[];drones=[];trucks=[];allySpawned=0;enemySpawned=0;}
+function waveDone(){return allySpawned>=MAX_ALLY&&enemySpawned>=MAX_ENEMY&&ships.length===0&&projectiles.length===0;}
+function resetWaveSpawns(){allySpawned=0;enemySpawned=0;spawnTimer=0.3;for(let i=0;i<2;i++)spawnShip();}
+function enterStage2(){stagePhase="stage2";secDefPresent=true;secDefTime=0;secDefBubbleVisible=true;secDefBubbleTimer=3.5;AMMO.stage2=true;AMMO.rechargeRate=0.22;AMMO.cost=1.15;clearWave();resetWaveSpawns();message="STAGE 2";messageTimer=1.2;}
+function enterStage3(){stagePhase="stage3";treasPresent=true;treasTime=0;treasBubbleVisible=true;treasBubbleTimer=3.5;AMMO.rechargeRate=0.18;AMMO.cost=1.25;s3AllyPass=0;s3EnemyPass=0;s3EnemySunk=0;clearWave();resetWaveSpawns();message="STAGE 3";messageTimer=1.2;}
+function enterStage4(){
+  stagePhase="stage4intro";
+  stage4IntroPhase="secdef";
+  stage4IntroTimer=3.5;
+  secDefPresent=true; secDefTime=0;
+  secDefBubbleVisible=true; secDefBubbleTimer=4;
+  admiralPresent=false;
+  carrierPresent=false; carrierY=H+80; carrierLeaving=false; carrierGone=false;
+  carrierRiseProgress=0;
+  f35SpawnTimer=4;
+  poopGauge=0; toiletClogged=false; poopCritical=false; cloggedTimer=0;
+  updatePoopUI();
+  AMMO.rechargeRate=0.20; AMMO.cost=1.2;
+  clearWave();
+  allySpawned=0; enemySpawned=0; ships=[];
+  message=""; messageTimer=0;
+  playFanfare();
+}
+function beginStage4Combat(){
+  stagePhase="stage4";
+  stage4IntroPhase="done";
+  admiralPresent=true; admiralTime=0;
+  carrierPresent=true; carrierY=H*0.42;
+  resetWaveSpawns();
+  message="STAGE 4 — F-35 Support"; messageTimer=1.5;
+}
+function enterStage5(){stagePhase="stage5";truckSpawnTimer=1.0;s5AllyKilledByShahed=0;clearWave();resetWaveSpawns();if(!carrierPresent){carrierPresent=true;carrierY=H*0.42;admiralPresent=true;admiralExitProgress=0;}if(carrierGone){carrierGone=false;carrierLeaving=false;carrierY=H*0.42;poopGauge=0;toiletClogged=false;}message="STAGE 5 — Shahed Threat";messageTimer=1.5;spawnTruck();}
+function evaluateEnd(){stagePhase="end";const s3Passed=s3AllyPass+s3EnemyPass;endResult=(s3Passed>=27&&statEnemySunk>=8)?"SUCCESS":"FAIL";}
+function skipStage(){if(stagePhase==="end")return;if(stagePhase==="wave1"||stagePhase==="title2"){stagePhase="title2";stageTitleTimer=0;enterStage2();}else if(stagePhase==="stage2"||stagePhase==="title3"){stagePhase="title3";stageTitleTimer=0;enterStage3();}else if(stagePhase==="stage3"||stagePhase==="title4"){stagePhase="title4";stageTitleTimer=0;enterStage4();}else if(stagePhase==="stage4intro"||stagePhase==="stage4"||stagePhase==="title5"){if(stagePhase==="stage4intro"){beginStage4Combat();}else{stagePhase="title5";stageTitleTimer=0;enterStage5();}}else if(stagePhase==="stage5"){clearWave();evaluateEnd();}message="Stage skipped (Space)";messageTimer=1;}
+addEventListener("keydown",e=>{if(e.repeat)return;if(e.key==="ArrowLeft")attack("left");if(e.key==="ArrowRight")attack("right");if(e.key===" "||e.code==="Space"){e.preventDefault();skipStage();}});
+function carrierHome(){return{x:W*0.50,y:carrierY};}
+function spawnF35(){if(toiletClogged||carrierGone||carrierLeaving||f35s.length>=2)return;const home=carrierHome();f35s.push({x:home.x,y:home.y-10,state:"seek",target:null,life:18,heading:0});}
+function updateF35s(dt){const home=carrierHome();f35s.forEach(f=>{f.life-=dt;if(f.state==="return"||f.life<=0||carrierGone||carrierLeaving){const dx=home.x-f.x,dy=home.y-10-f.y,d=Math.hypot(dx,dy)||1;f.heading=Math.atan2(dy,dx);f.x+=dx/d*70*dt;f.y+=dy/d*70*dt;if(d<18)f.life=-1;return;}const nearDrone=drones.find(d=>d.life>0&&Math.hypot(d.x-f.x,d.y-f.y)<110);if(nearDrone){const dx=nearDrone.x-f.x,dy=nearDrone.y-f.y,d=Math.hypot(dx,dy)||1;f.heading=Math.atan2(dy,dx);f.x+=dx/d*90*dt;f.y+=dy/d*90*dt;if(d<24){explosions.push({x:nearDrone.x,y:nearDrone.y,life:0.5,maxLife:0.5});nearDrone.life=-1;message="F-35 intercepted Shahed!";messageTimer=1;f.state="return";}return;}if(!f.target||!f.target.alive){const enemies=ships.filter(s=>s.alive&&s.faction==="enemy");f.target=enemies.length?enemies[Math.floor(Math.random()*enemies.length)]:null;}if(f.target&&f.target.alive){const dx=f.target.x-f.x,dy=f.target.y-f.y,d=Math.hypot(dx,dy)||1;f.heading=Math.atan2(dy,dx);f.x+=dx/d*85*dt;f.y+=dy/d*85*dt;if(d<26){sinkShip(f.target,false,true);f.target=null;if(Math.random()<0.5)f.state="return";}}else{f.heading=Math.atan2(Math.cos(trumpTime)*15,Math.sin(trumpTime*1.2)*20);f.x+=Math.sin(trumpTime*1.2)*20*dt;f.y+=Math.cos(trumpTime)*15*dt;}});f35s=f35s.filter(f=>f.life>0);}
+function spawnTruck(){const y=H*(0.18+Math.random()*0.50);trucks.push({x:W+50,y:y,state:"enter",timer:0,launched:false});message="Porter truck inbound!";messageTimer=1.2;}
+function updateTrucks(dt){for(let i=trucks.length-1;i>=0;i--){const t=trucks[i];if(t.state==="enter"){t.x-=100*dt;if(t.x<=W*0.90){t.x=W*0.90;t.state="wait";t.timer=2.0;}}else if(t.state==="wait"){t.timer-=dt;if(t.timer<=0){drones.push({x:t.x-12,y:t.y-14,target:null,life:22,heading:Math.PI});t.launched=true;t.state="exit";message="Shahed launched!";messageTimer=1.2;}}else if(t.state==="exit"){t.x+=120*dt;if(t.x>W+80)trucks.splice(i,1);}}}
+function updateDrones(dt){for(let i=drones.length-1;i>=0;i--){const d=drones[i];d.life-=dt;if(d.life<=0){drones.splice(i,1);continue;}if(!d.target||!d.target.alive){const allies=ships.filter(s=>s.alive&&s.faction==="ally");d.target=allies.length?allies[Math.floor(Math.random()*allies.length)]:null;}if(d.target&&d.target.alive){const dx=d.target.x-d.x,dy=d.target.y-d.y,dist=Math.hypot(dx,dy)||1;d.heading=Math.atan2(dy,dx);d.x+=dx/dist*42*dt;d.y+=dy/dist*42*dt;if(dist<26){
+      const wasAlly=d.target.faction==="ally";
+      sinkShip(d.target,false,false);
+      if(wasAlly){s5AllyKilledByShahed++;if(s5AllyKilledByShahed>=10){endResult="FAIL";stagePhase="end";message="FAIL — 10 allies lost to Shahed!";messageTimer=3;}}
+      explosions.push({x:d.x,y:d.y,life:0.6,maxLife:0.6});drones.splice(i,1);
+    }}else{d.heading=Math.PI;d.x-=38*dt;if(d.x<-50)drones.splice(i,1);}}}
+function updatePoopSystem(dt){if(!(stagePhase==="stage4"||stagePhase==="stage5"))return;if(carrierGone){carrierReturnTimer-=dt;if(carrierReturnTimer<=0){carrierGone=false;carrierLeaving=false;carrierY=H*0.42;poopGauge=0;toiletClogged=false;poopCritical=false;cloggedTimer=0;admiralBubble=false;admiralDeparting=false;admiralExitProgress=0;admiralPresent=true;message="CVN returned from repairs";messageTimer=1.5;updatePoopUI();}return;}if(carrierLeaving){carrierY+=80*dt;admiralExitProgress=Math.min(1,admiralExitProgress+dt/2.6);if(carrierY>H+60){carrierGone=true;carrierLeaving=false;carrierReturnTimer=12;admiralPresent=false;admiralExitProgress=1;f35s.forEach(f=>{f.state="return";});}return;}const fillRate=stagePhase==="stage4"?POOP_FILL_RATE_S4:POOP_FILL_RATE_S5;poopGauge=Math.min(poopMax,poopGauge+fillRate*dt);if(poopGauge>=poopMax){if(!toiletClogged){toiletClogged=true;admiralBubble=true;admiralBubbleText="Please fix the toilet!";admiralBubbleTimer=5;admiralDeparting=false;f35s.forEach(f=>{f.state="return";});}cloggedTimer+=dt;if(cloggedTimer>=CLOGGED_LEAVE_TIME&&!poopCritical){poopCritical=true;admiralBubble=true;admiralBubbleText="Does anyone have a spare pair of pants?";admiralBubbleTimer=8;admiralDeparting=true;carrierLeaving=true;admiralExitProgress=0;message="CVN departing for repairs!";messageTimer=2;}}updatePoopUI();}
+
+function drawBackground(){const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,"#0a2a3e");g.addColorStop(1,"#04121e");ctx.fillStyle=g;ctx.fillRect(0,0,W,H);ctx.globalAlpha=.13;ctx.strokeStyle="#9fe4f3";ctx.lineWidth=1;for(let y=H*.07;y<H;y+=38){ctx.beginPath();for(let x=0;x<W;x+=24){ctx.moveTo(x,y);ctx.quadraticCurveTo(x+12,y-3,x+24,y);}ctx.stroke();}ctx.globalAlpha=1;const land=ctx.createLinearGradient(0,0,W,H);land.addColorStop(0,"#314737");land.addColorStop(1,"#1d3028");ctx.fillStyle=land;const leftLandW=W*0.13,rightLandW=W*0.10;ctx.fillRect(0,0,leftLandW,H);ctx.fillRect(W-rightLandW,0,rightLandW,H);ctx.fillRect(0,0,W,H*.045);ctx.fillRect(0,H*.955,W,H*.045);const penX=px(PATH.peninX),penTop=py(PATH.peninTop),penBot=py(PATH.peninBot),penMid=py(PATH.targetY),baseX=leftLandW;ctx.beginPath();ctx.moveTo(baseX,penTop-20);ctx.quadraticCurveTo(baseX+20,penTop-5,penX-8,penMid-18);ctx.quadraticCurveTo(penX+6,penMid-6,penX+4,penMid);ctx.quadraticCurveTo(penX+6,penMid+6,penX-8,penMid+18);ctx.quadraticCurveTo(baseX+20,penBot+5,baseX,penBot+20);ctx.closePath();ctx.fill();ctx.strokeStyle="rgba(194,176,112,.65)";ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(baseX,penTop-20);ctx.quadraticCurveTo(baseX+20,penTop-5,penX-8,penMid-18);ctx.quadraticCurveTo(penX+6,penMid-6,penX+4,penMid);ctx.quadraticCurveTo(penX+6,penMid+6,penX-8,penMid+18);ctx.quadraticCurveTo(baseX+20,penBot+5,baseX,penBot+20);ctx.stroke();ctx.beginPath();ctx.moveTo(leftLandW,0);ctx.lineTo(leftLandW,penTop-20);ctx.moveTo(leftLandW,penBot+20);ctx.lineTo(leftLandW,H);ctx.moveTo(W-rightLandW,0);ctx.lineTo(W-rightLandW,H);ctx.moveTo(0,H*.045);ctx.lineTo(W,H*.045);ctx.moveTo(0,H*.955);ctx.lineTo(W,H*.955);ctx.stroke();ctx.fillStyle="rgba(118,130,88,.45)";landRocks.forEach(r=>{ctx.beginPath();ctx.arc(r.x,r.y,r.r,0,Math.PI*2);ctx.fill();});ctx.strokeStyle="rgba(160,220,235,.22)";ctx.lineWidth=3;ctx.setLineDash([7,8]);ctx.beginPath();ctx.moveTo(px(PATH.rightX),H);ctx.lineTo(px(PATH.rightX),py(PATH.topY));ctx.lineTo(px(PATH.portX),py(PATH.portY));ctx.lineTo(px(PATH.leftX),py(PATH.topY));ctx.lineTo(px(PATH.leftX),py(PATH.peninTop));ctx.lineTo(px(PATH.peninX)+12,py(PATH.targetY));ctx.lineTo(px(PATH.leftX),py(PATH.peninBot));ctx.lineTo(px(PATH.leftX),H);ctx.stroke();ctx.setLineDash([]);ctx.save();ctx.font="bold 18px Arial";ctx.fillStyle="rgba(180,220,240,.55)";ctx.textAlign="center";ctx.fillText("HORMUZ",W*.52,H*.55);ctx.font="10px Arial";ctx.fillStyle="rgba(160,200,220,.4)";ctx.fillText("Strait of Hormuz",W*.52,H*.55+16);ctx.restore();drawDefensePoint(px(PATH.playerTowerX),py(PATH.targetY),"PLAYER TOWER","Peninsula Tip");}
+function drawDefensePoint(x,y,label,sub){ctx.save();ctx.fillStyle="#69715c";ctx.strokeStyle="#c6bb87";ctx.lineWidth=2;ctx.beginPath();ctx.arc(x,y,24,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.fillStyle="#3f4b45";ctx.fillRect(x-10,y-18,20,36);ctx.fillStyle="#8d9b91";ctx.fillRect(x-14,y-25,28,9);ctx.strokeStyle="#aebbb2";ctx.lineWidth=6;ctx.lineCap="round";ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+28,y);ctx.stroke();ctx.lineCap="butt";ctx.textAlign="center";ctx.font="bold 10px Arial";ctx.fillStyle="#f0f6ed";ctx.fillText(label,x,y+43);ctx.font="9px Arial";ctx.fillStyle="rgba(235,245,238,.65)";ctx.fillText(sub,x,y+55);ctx.restore();}
+function drawPort(){const x=px(PATH.portX),y=py(PATH.portY);ctx.fillStyle="#8a7654";ctx.fillRect(x-W*.14,y,W*.28,18);ctx.fillStyle="#c5ae7b";ctx.fillRect(x-W*.105,y-8,W*.21,8);ctx.fillStyle="#dcebf0";ctx.font="bold 13px Arial";ctx.textAlign="center";ctx.fillText("PORT",x,y-14);}
+function drawCarrier(){
+  if(!carrierPresent||carrierGone)return;
+  const cx=W*.50,cy=carrierY;
+  const L=Math.min(W*.19,125),D=Math.min(H*.0525,31);
+  ctx.save();ctx.translate(cx,cy);
+
+  // Side-profile aircraft carrier, based on the supplied reference photo.
+  ctx.fillStyle="#303a43";ctx.strokeStyle="#8d999f";ctx.lineWidth=2;
+  ctx.beginPath();
+  ctx.moveTo(-L,-D*.02);ctx.lineTo(-L*.88,-D*.43);ctx.lineTo(L*.78,-D*.42);
+  ctx.lineTo(L,-D*.15);ctx.lineTo(L*.91,D*.32);ctx.lineTo(L*.76,D*.53);
+  ctx.lineTo(-L*.78,D*.53);ctx.lineTo(-L*.98,D*.25);ctx.closePath();ctx.fill();ctx.stroke();
+
+  // Long flight deck.
+  ctx.fillStyle="#59646c";ctx.strokeStyle="#a9b2b7";ctx.lineWidth=1.5;
+  ctx.beginPath();
+  ctx.moveTo(-L*.88,-D*.43);ctx.lineTo(L*.80,-D*.41);ctx.lineTo(L*.94,-D*.21);
+  ctx.lineTo(-L*.92,-D*.23);ctx.closePath();ctx.fill();ctx.stroke();
+
+  // Deck/runway markings visible from the side-profile representation.
+  ctx.strokeStyle="rgba(245,247,245,.9)";ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(-L*.77,-D*.32);ctx.lineTo(L*.72,-D*.30);ctx.stroke();
+  ctx.strokeStyle="rgba(225,230,232,.65)";ctx.lineWidth=1;
+  for(let i=-4;i<=4;i++){
+    const x=i*L*.18;ctx.beginPath();ctx.moveTo(x,-D*.35);ctx.lineTo(x+L*.035,D*.08);ctx.stroke();
+  }
+  ctx.strokeStyle="rgba(240,242,240,.7)";ctx.lineWidth=1.5;ctx.setLineDash([8,6]);
+  ctx.beginPath();ctx.moveTo(-L*.68,-D*.06);ctx.lineTo(L*.70,-D*.04);ctx.stroke();ctx.setLineDash([]);
+
+  // Island / bridge.
+  ctx.fillStyle="#465159";ctx.strokeStyle="#aeb7bc";ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(L*.18,-D*.25);ctx.lineTo(L*.42,-D*.26);ctx.lineTo(L*.45,D*.09);ctx.lineTo(L*.20,D*.11);ctx.closePath();ctx.fill();ctx.stroke();
+  ctx.fillStyle="#69757d";ctx.fillRect(L*.22,-D*.47,L*.17,D*.22);
+  ctx.fillStyle="#9da7ac";ctx.fillRect(L*.25,-D*.62,L*.11,D*.15);
+  ctx.strokeStyle="#c8ced1";ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(L*.305,-D*.62);ctx.lineTo(L*.305,-D*.98);ctx.stroke();
+  ctx.fillStyle="#d7dddf";ctx.fillRect(L*.27,-D*1.02,L*.07,3);
+
+  ctx.strokeStyle="rgba(190,210,220,.42)";ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(-L*.78,D*.52);ctx.lineTo(L*.73,D*.52);ctx.stroke();
+  ctx.fillStyle="rgba(220,230,235,.88)";ctx.font="bold 10px Arial";ctx.textAlign="center";ctx.fillText("CVN",0,D*.80);
+  if(carrierLeaving){ctx.fillStyle="rgba(255,190,110,.95)";ctx.font="bold 11px Arial";ctx.fillText("REPAIRS",L*.18,-D*1.08);}
+  ctx.restore();
+}
+function drawF35(f){
+  ctx.save();ctx.translate(f.x,f.y);
+  const S=Math.max(1.1,Math.min(2.0,W/700));ctx.scale(S,S);
+  // F-35 silhouette based on the supplied reference; rotate to match flight direction.
+  const a=(typeof f.heading==="number")?f.heading:0;ctx.rotate(a);
+  ctx.fillStyle="#aeb7bd";ctx.strokeStyle="#68747b";ctx.lineWidth=1;
+  ctx.beginPath();
+  // Nose
+  ctx.moveTo(25,0);
+  // right wing / fuselage
+  ctx.lineTo(8,-3);ctx.lineTo(1,-7);ctx.lineTo(-5,-8);
+  // upper right tail/wing
+  ctx.lineTo(-10,-14);ctx.lineTo(-17,-15);ctx.lineTo(-12,-5);
+  // rear fuselage
+  ctx.lineTo(-22,-3);ctx.lineTo(-29,-9);ctx.lineTo(-35,-9);
+  ctx.lineTo(-27,-1);
+  // center rear
+  ctx.lineTo(-35,0);
+  ctx.lineTo(-27,1);ctx.lineTo(-35,9);ctx.lineTo(-29,9);
+  // lower wing
+  ctx.lineTo(-22,3);ctx.lineTo(-12,5);ctx.lineTo(-17,15);ctx.lineTo(-10,14);
+  ctx.lineTo(-5,8);ctx.lineTo(1,7);ctx.lineTo(8,3);
+  ctx.closePath();ctx.fill();ctx.stroke();
+  // dark canopy
+  ctx.fillStyle="#303b43";ctx.beginPath();ctx.moveTo(7,-2);ctx.lineTo(16,-1);ctx.lineTo(20,0);ctx.lineTo(16,2);ctx.lineTo(7,2);ctx.closePath();ctx.fill();
+  // small light marking
+  ctx.fillStyle="#8fd7e8";ctx.fillRect(19,-1,5,2);
+  ctx.restore();
+}
+function drawTruck(t){ctx.save();ctx.translate(t.x,t.y);ctx.fillStyle="#d8d8d8";ctx.fillRect(0,-14,36,16);ctx.fillStyle="#f0f0f0";ctx.fillRect(-22,-18,24,20);ctx.fillStyle="#e0e0e0";ctx.fillRect(-20,-22,18,6);ctx.fillStyle="#5a9ac0";ctx.fillRect(-18,-16,14,8);ctx.fillStyle="#222";ctx.beginPath();ctx.arc(-10,4,6,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(24,4,6,0,Math.PI*2);ctx.fill();ctx.fillStyle="#666";ctx.beginPath();ctx.arc(-10,4,2.5,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(24,4,2.5,0,Math.PI*2);ctx.fill();ctx.fillStyle="#1a1a1a";ctx.font="bold 9px Arial";ctx.textAlign="center";ctx.fillText("PORTER",10,-18);if(t.state==="wait"){ctx.fillStyle="#ffe080";ctx.font="bold 14px Arial";ctx.fillText(Math.ceil(t.timer)+"s",8,-30);ctx.fillStyle="rgba(255,200,80,.5)";ctx.beginPath();ctx.arc(10,-20,8+Math.sin(trumpTime*8)*2,0,Math.PI*2);ctx.fill();}if(t.state==="enter"){ctx.fillStyle="#ffcc66";ctx.font="bold 10px Arial";ctx.fillText("→",-30,-5);}ctx.restore();}
+function drawDrone(d){
+  ctx.save();ctx.translate(d.x,d.y);
+  const S=Math.max(1,Math.min(1.6,W/850));ctx.scale(S,S);
+  // Shahed-136-like silhouette based on the supplied reference.
+  const a=(typeof d.heading==="number")?d.heading:Math.PI;ctx.rotate(a);
+  ctx.fillStyle="#806b4b";ctx.strokeStyle="#b69a68";ctx.lineWidth=1;
+  // Delta / triangular wing with rear-mounted pusher propeller.
+  ctx.beginPath();
+  ctx.moveTo(25,0);                 // nose
+  ctx.lineTo(9,-4);
+  ctx.lineTo(-13,-15);ctx.lineTo(-24,-13);
+  ctx.lineTo(-14,-3);
+  ctx.lineTo(-31,0);
+  ctx.lineTo(-14,3);
+  ctx.lineTo(-24,13);ctx.lineTo(-13,15);
+  ctx.lineTo(9,4);
+  ctx.closePath();ctx.fill();ctx.stroke();
+  // fuselage
+  ctx.fillStyle="#4b3d2c";ctx.fillRect(-8,-2,30,4);
+  // rear propeller hub and blades
+  ctx.fillStyle="#222";
+  ctx.beginPath();ctx.arc(-25,0,2.2,0,Math.PI*2);ctx.fill();
+  ctx.save();ctx.translate(-25,0);
+  ctx.fillRect(-1,-10,2,8);ctx.fillRect(-1,2,2,8);
+  ctx.restore();
+  // nose marking
+  ctx.fillStyle="#d6b26c";ctx.fillRect(20,-2,5,4);
+  ctx.restore();
+}
+function drawTruck(t){ctx.save();ctx.translate(t.x,t.y);ctx.fillStyle="#d8d8d8";ctx.fillRect(0,-14,36,16);ctx.fillStyle="#f0f0f0";ctx.fillRect(-22,-18,24,20);ctx.fillStyle="#e0e0e0";ctx.fillRect(-20,-22,18,6);ctx.fillStyle="#5a9ac0";ctx.fillRect(-18,-16,14,8);ctx.fillStyle="#222";ctx.beginPath();ctx.arc(-10,4,6,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(24,4,6,0,Math.PI*2);ctx.fill();ctx.fillStyle="#666";ctx.beginPath();ctx.arc(-10,4,2.5,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(24,4,2.5,0,Math.PI*2);ctx.fill();ctx.fillStyle="#1a1a1a";ctx.font="bold 9px Arial";ctx.textAlign="center";ctx.fillText("PORTER",10,-18);if(t.state==="wait"){ctx.fillStyle="#ffe080";ctx.font="bold 14px Arial";ctx.fillText(Math.ceil(t.timer)+"s",8,-30);ctx.fillStyle="rgba(255,200,80,.5)";ctx.beginPath();ctx.arc(10,-20,8+Math.sin(trumpTime*8)*2,0,Math.PI*2);ctx.fill();}if(t.state==="enter"){ctx.fillStyle="#ffcc66";ctx.font="bold 10px Arial";ctx.fillText("→",-30,-5);}ctx.restore();}
+function drawDrone(d){
+  ctx.save();ctx.translate(d.x,d.y);
+  const S=Math.max(1,Math.min(1.6,W/850));ctx.scale(S,S);
+  // Shahed-136-like delta-wing loitering munition
+  ctx.fillStyle="#806b4b";ctx.strokeStyle="#b69a68";ctx.lineWidth=1;
+  ctx.beginPath();
+  ctx.moveTo(22,0);ctx.lineTo(7,-4);ctx.lineTo(-12,-15);ctx.lineTo(-23,-13);
+  ctx.lineTo(-13,-3);ctx.lineTo(-28,0);ctx.lineTo(-13,3);ctx.lineTo(-23,13);
+  ctx.lineTo(-12,15);ctx.lineTo(7,4);ctx.closePath();ctx.fill();ctx.stroke();
+  ctx.fillStyle="#4b3d2c";ctx.fillRect(-5,-2,18,4);
+  ctx.fillStyle="#d6b26c";ctx.fillRect(19,-2,4,4);
+  ctx.fillStyle="#c77b35";ctx.beginPath();ctx.arc(25,0,2.5,0,Math.PI*2);ctx.fill();
+  ctx.restore();
+}
+function drawShip(s){const size=s.shipSize;ctx.save();ctx.translate(s.x,s.y);ctx.fillStyle=s.color;ctx.beginPath();if(s.kind==="lng"){ctx.moveTo(-size*1.5,-size*.4);ctx.lineTo(size*1.0,-size*.4);ctx.lineTo(size*1.45,size*.15);ctx.lineTo(size*.8,size*.7);ctx.lineTo(-size*1.1,size*.7);ctx.lineTo(-size*1.5,size*.15);ctx.closePath();ctx.fill();ctx.fillStyle="rgba(200,240,255,.55)";ctx.beginPath();ctx.ellipse(-size*.3,-size*.15,size*.45,size*.35,0,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.ellipse(size*.4,-size*.15,size*.4,size*.32,0,0,Math.PI*2);ctx.fill();}else{ctx.moveTo(-size*1.35,-size*.45);ctx.lineTo(size*.9,-size*.45);ctx.lineTo(size*1.35,size*.25);ctx.lineTo(size*.75,size*.65);ctx.lineTo(-size*.95,size*.65);ctx.lineTo(-size*1.35,size*.2);ctx.closePath();ctx.fill();}if(s.pattern==="stripe"){ctx.save();ctx.clip();ctx.strokeStyle="rgba(255,255,255,.65)";ctx.lineWidth=3;for(let i=-40;i<45;i+=8){ctx.beginPath();ctx.moveTo(i,-24);ctx.lineTo(i+22,24);ctx.stroke();}ctx.restore();}ctx.fillStyle="#d7e4e8";ctx.fillRect(-size*.5,-size*.95,size*1.0,size*.4);ctx.fillStyle="#fff";ctx.beginPath();if(s.state==="MOVING_RIGHT_EDGE_UP"||s.state==="MOVING_TO_PORT"){ctx.moveTo(0,-size*1.2);ctx.lineTo(-4,-size*.65);ctx.lineTo(4,-size*.65);}else if(s.state==="MOVING_TO_LEFT_EDGE"){ctx.moveTo(-size*1.5,0);ctx.lineTo(-size*.85,-4);ctx.lineTo(-size*.85,4);}else if(s.state==="MOVING_AROUND_PENIN"){ctx.moveTo(size*1.15,0);ctx.lineTo(size*.55,-4);ctx.lineTo(size*.55,4);}else{ctx.moveTo(0,size*1.2);ctx.lineTo(-4,size*.65);ctx.lineTo(4,size*.65);}ctx.closePath();ctx.fill();ctx.fillStyle="rgba(235,250,255,.9)";ctx.font="bold 9px Arial";ctx.textAlign="center";ctx.fillText((s.faction==="ally"?"ALLY":"ENEMY")+" "+(s.kind==="lng"?"LNG":"TANK")+" "+SIZE_DATA[s.sizeKey].label,0,size+14);if(s.hitFlash>0){ctx.strokeStyle="#fff";ctx.lineWidth=3;ctx.beginPath();ctx.arc(0,0,size*1.5,0,Math.PI*2);ctx.stroke();}ctx.restore();}
+function drawAttackEffect(){if(attackFlash<=0)return;const alpha=Math.min(1,attackFlash/.18);ctx.save();ctx.globalAlpha=alpha;ctx.strokeStyle="#fff";ctx.lineWidth=4;ctx.setLineDash([10,8]);if(attackSide==="right"){const x=px(PATH.rightX);ctx.beginPath();ctx.moveTo(x,H*.15);ctx.lineTo(x,H*.90);ctx.stroke();}else{ctx.beginPath();ctx.moveTo(px(PATH.leftX),H*.15);ctx.lineTo(px(PATH.leftX),py(PATH.peninTop));ctx.lineTo(px(PATH.peninX)+12,py(PATH.targetY));ctx.lineTo(px(PATH.leftX),py(PATH.peninBot));ctx.lineTo(px(PATH.leftX),H*.90);ctx.stroke();}ctx.setLineDash([]);ctx.restore();}
+function drawProjectiles(){projectiles.forEach(p=>{const progress=Math.max(0,Math.min(1,1-p.life/p.maxLife));const alpha=Math.min(1,p.life<.18?p.life/.18:1);const sx=p.startX,sy=p.startY,ex=p.tx,ey=p.ty;const arcHeight=Math.max(70,Math.abs(ex-sx)*.28+Math.abs(ey-sy)*.12);function arcPoint(t){const x=sx+(ex-sx)*t;const baseY=sy+(ey-sy)*t;return{x,y:baseY-4*arcHeight*t*(1-t)};}const cur=arcPoint(progress),prev=arcPoint(Math.max(0,progress-.12));ctx.save();ctx.globalAlpha=alpha;ctx.strokeStyle="rgba(255,226,140,.42)";ctx.lineWidth=2;ctx.setLineDash([7,7]);ctx.beginPath();for(let i=0;i<=30;i++){const q=arcPoint(i/30);if(i===0)ctx.moveTo(q.x,q.y);else ctx.lineTo(q.x,q.y);}ctx.stroke();ctx.setLineDash([]);ctx.strokeStyle="#fff0a3";ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(prev.x,prev.y);ctx.lineTo(cur.x,cur.y);ctx.stroke();ctx.fillStyle="#fff4b5";ctx.beginPath();ctx.arc(cur.x,cur.y,6,0,Math.PI*2);ctx.fill();ctx.restore();});}
+function drawTowerStatus(x,y,tower,label){const w=72,h=7;ctx.fillStyle="rgba(0,0,0,.55)";ctx.fillRect(x-w/2,y-43,w,h);ctx.fillStyle="#65d88b";ctx.fillRect(x-w/2,y-43,w*(tower.hp/tower.maxHp),h);ctx.strokeStyle="rgba(255,255,255,.35)";ctx.lineWidth=1;ctx.strokeRect(x-w/2,y-43,w,h);ctx.textAlign="center";ctx.font="bold 9px Arial";ctx.fillStyle="#fff";ctx.fillText(label,x,y-49);}
+function drawTrumpDot(){const baseCx=W*0.50,baseCy=H*0.78,S=Math.max(4,Math.min(7,W/120)),t=trumpTime;let swayX=0,bounceY=0,lean=0,armPhase=0;if(trumpMood==="happy"){swayX=Math.sin(t*6.5)*2.2;bounceY=Math.abs(Math.sin(t*8))*1.8;lean=Math.sin(t*6.5)*0.8;armPhase=Math.sin(t*9);}else if(trumpMood==="pain"){swayX=Math.sin(t*20)*0.6;bounceY=Math.sin(t*15)*0.3;lean=Math.sin(t*12)*0.3;}else{swayX=Math.sin(t*2.2)*1.8;bounceY=Math.abs(Math.sin(t*2.2))*0.7;lean=Math.sin(t*2.2)*0.5;armPhase=Math.sin(t*2.8);}const cx=baseCx+swayX*S,cy=baseCy-bounceY*S;const pxl=(gx,gy,col)=>{const lx=gx+lean*(gy+5)*0.08;ctx.fillStyle=col;ctx.fillRect(cx+lx*S,cy+gy*S,S+0.5,S+0.5);};const hair="#f0d060",skin="#f2c8a0",suit="#1c2a48",tie="#d02020",eye="#1a1a1a",mouthHappy="#c42828",mouthPain="#5a2828",white="#f5f0e8";for(let x=-7;x<=7;x++)pxl(x,-11,hair);for(let x=-8;x<=8;x++){pxl(x,-10,hair);pxl(x,-9,hair);}for(let x=-7;x<=7;x++)pxl(x,-8,hair);for(let y=-7;y<=1;y++){pxl(-8,y,hair);pxl(8,y,hair);}for(let y=-7;y<=3;y++)for(let x=-6;x<=6;x++)pxl(x,y,skin);for(let x=-5;x<=5;x++)pxl(x,4,skin);if(trumpMood==="happy"){pxl(-3,-2,eye);pxl(-2,-2,eye);pxl(2,-2,eye);pxl(3,-2,eye);pxl(-3,2,mouthHappy);pxl(-2,3,mouthHappy);pxl(-1,3,mouthHappy);pxl(0,3,mouthHappy);pxl(1,3,mouthHappy);pxl(2,3,mouthHappy);pxl(3,2,mouthHappy);pxl(-1,3,white);pxl(0,3,white);pxl(1,3,white);}else if(trumpMood==="pain"){pxl(-4,-2,eye);pxl(-2,-2,eye);pxl(2,-2,eye);pxl(4,-2,eye);pxl(-2,2,mouthPain);pxl(0,1,mouthPain);pxl(2,2,mouthPain);}else{pxl(-3,-2,eye);pxl(-2,-2,eye);pxl(2,-2,eye);pxl(3,-2,eye);const smileY=Math.sin(t*2.2)>0?3:2;for(let x=-2;x<=2;x++)pxl(x,smileY,"#a05050");}for(let y=6;y<=11;y++)for(let x=-7;x<=7;x++)pxl(x,y,suit);pxl(-1,6,white);pxl(0,6,white);pxl(1,6,white);pxl(0,6,tie);pxl(0,7,tie);pxl(0,8,tie);const armY=7+Math.round(armPhase*1.2);pxl(-9,armY,suit);pxl(-9,armY+1,skin);pxl(9,armY,suit);pxl(9,armY+1,skin);ctx.font="bold 11px Arial";ctx.textAlign="center";let label="TRUMP";if(trumpMood==="happy"){label="TRUMP  :D";ctx.fillStyle="#ffe080";}else if(trumpMood==="pain"){label="TRUMP  :(";ctx.fillStyle="#ff9a9a";}else ctx.fillStyle="rgba(255,230,150,.85)";ctx.fillText(label,cx,cy+13*S+10);}
+function drawBubble(bx,by,text){ctx.font="bold 11px Arial";const tw=ctx.measureText(text).width,bw=tw+16,bh=28;ctx.fillStyle="rgba(255,255,255,.92)";ctx.strokeStyle="rgba(40,40,60,.7)";ctx.lineWidth=2;ctx.beginPath();if(ctx.roundRect)ctx.roundRect(bx-bw/2,by-bh,bw,bh,8);else ctx.rect(bx-bw/2,by-bh,bw,bh);ctx.fill();ctx.stroke();ctx.beginPath();ctx.moveTo(bx-6,by);ctx.lineTo(bx,by+10);ctx.lineTo(bx+8,by);ctx.closePath();ctx.fill();ctx.stroke();ctx.fillStyle="#222";ctx.textAlign="center";ctx.fillText(text,bx,by-bh/2+5);}
+function drawSecDef(){if(!secDefPresent)return;const S=Math.max(3.2,Math.min(5.2,W/145)),baseCx=W*0.60,baseCy=H*0.78,cx=baseCx+Math.sin(secDefTime*11)*1.3*S,cy=baseCy;const pxl=(gx,gy,col)=>{ctx.fillStyle=col;ctx.fillRect(cx+gx*S,cy+gy*S,S+0.4,S+0.4);};const skin="#e8c4a0",hair="#3a2a1a",suit="#1a2030",eye="#1a1a1a";for(let x=-5;x<=5;x++)pxl(x,-9,hair);for(let y=-7;y<=2;y++)for(let x=-5;x<=5;x++)pxl(x,y,skin);pxl(-3,-2,eye);pxl(-2,-2,eye);pxl(2,-2,eye);pxl(3,-2,eye);for(let y=3;y<=10;y++)for(let x=-6;x<=6;x++)pxl(x,y,suit);pxl(0,4,"#2a4a8a");ctx.font="bold 9px Arial";ctx.textAlign="center";ctx.fillStyle="rgba(200,210,230,.85)";ctx.fillText("SECDEF",cx,cy+12*S+8);if(stagePhase==="stage4intro"&&stage4IntroPhase==="secdef"){
+  drawBubble(cx,cy-14*S,"Sir, we will deploy the aircraft carrier!");
+}else if(secDefBubbleVisible||AMMO.current<AMMO.cost){
+  drawBubble(cx,cy-13*S,"Sir, we have no Tomahawks...");
+}}
+function drawTreasury(){if(!treasPresent)return;const S=Math.max(3.2,Math.min(5.2,W/145)),baseCx=W*0.34,baseCy=H*0.78,cx=baseCx+Math.sin(treasTime*9)*1.1*S,cy=baseCy;const pxl=(gx,gy,col)=>{ctx.fillStyle=col;ctx.fillRect(cx+gx*S,cy+gy*S,S+0.4,S+0.4);};const skin="#f0d0b0",hair="#c8a060",suit="#2a1a10",eye="#1a1a1a";for(let x=-5;x<=5;x++)pxl(x,-9,hair);for(let y=-7;y<=2;y++)for(let x=-5;x<=5;x++)pxl(x,y,skin);pxl(-3,-2,eye);pxl(-2,-2,eye);pxl(2,-2,eye);pxl(3,-2,eye);for(let y=3;y<=10;y++)for(let x=-6;x<=6;x++)pxl(x,y,suit);pxl(0,4,"#8a2020");ctx.font="bold 9px Arial";ctx.textAlign="center";ctx.fillStyle="rgba(230,210,180,.9)";ctx.fillText("TREASURY",cx,cy+12*S+8);if(treasBubbleVisible)drawBubble(cx,cy-13*S,"Sir... we have no oil.");}
+function drawAdmiral(){
+if(!admiralPresent||carrierGone)return;
+const S=Math.max(3.2,Math.min(5.2,W/145)),baseCx=W*0.80,baseCy=H*0.78;
+const departing=!!admiralDeparting;
+let jitter=Math.sin(admiralTime*8)*0.8,bounce=0;
+if(toiletClogged&&!departing){jitter=Math.sin(admiralTime*22)*3.5+Math.sin(admiralTime*31)*2;bounce=Math.abs(Math.sin(admiralTime*18))*2.5;}
+const exit=admiralExitProgress||0;
+const cx=baseCx+(departing?0:jitter*S),cy=baseCy-(departing?0:bounce*S)+H*0.22*exit;
+ctx.save();ctx.globalAlpha=1-exit*0.72;
+const pxl=(gx,gy,col)=>{ctx.fillStyle=col;ctx.fillRect(cx+gx*S,cy+gy*S,S+0.4,S+0.4);};
+const skin=departing?"#d94b4b":(toiletClogged?"#8a6a28":"#e0c4a0"),hair="#2a2a2a",suit="#1a2a40",eye="#1a1a1a";
+for(let x=-5;x<=5;x++)pxl(x,-9,hair);for(let y=-7;y<=2;y++)for(let x=-5;x<=5;x++)pxl(x,y,skin);
+pxl(-3,-2,eye);pxl(-2,-2,eye);pxl(2,-2,eye);pxl(3,-2,eye);
+if(departing){pxl(-2,1,"#4a2020");pxl(0,1,"#4a2020");pxl(2,1,"#4a2020");}
+else if(toiletClogged){if(Math.sin(admiralTime*15)>0){pxl(6,-6,"#8ec8e8");pxl(7,-4,"#8ec8e8");}if(Math.sin(admiralTime*12+1)>0){pxl(-7,-5,"#8ec8e8");pxl(-8,-3,"#8ec8e8");}pxl(-2,1,"#5a4020");pxl(-1,2,"#5a4020");pxl(0,2,"#5a4020");pxl(1,2,"#5a4020");pxl(2,1,"#5a4020");}
+else{pxl(-2,1,"#8a5050");pxl(0,1,"#8a5050");pxl(2,1,"#8a5050");}
+for(let y=3;y<=10;y++)for(let x=-6;x<=6;x++)pxl(x,y,suit);pxl(-2,4,"#e8d060");pxl(0,4,"#e8d060");pxl(2,4,"#e8d060");
+if(toiletClogged&&!departing){const a=Math.round(Math.sin(admiralTime*20)*2);pxl(-9,4+a,suit);pxl(9,4-a,suit);}
+ctx.font="bold 9px Arial";ctx.textAlign="center";ctx.fillStyle=departing?"#ff8c8c":(toiletClogged?"#c4a050":"rgba(180,200,230,.9)");ctx.fillText("ADMIRAL",cx,cy+12*S+8);
+if(admiralBubble||toiletClogged){const text=departing?"Does anyone have a spare pair of pants?":(toiletClogged?"Please fix the toilet!":admiralBubbleText);drawBubble(cx,cy-13*S,text);}
+ctx.restore();}
+function drawStageTitle(){if(!stagePhase.startsWith("title"))return;const alpha=Math.min(1,stageTitleTimer>0.4?1:stageTitleTimer/0.4);ctx.save();ctx.globalAlpha=alpha;ctx.fillStyle="rgba(0,10,20,.55)";ctx.fillRect(0,0,W,H);ctx.textAlign="center";ctx.font="bold 48px Arial";ctx.fillStyle="#ffe8a0";ctx.strokeStyle="rgba(0,0,0,.5)";ctx.lineWidth=6;ctx.strokeText(stageTitleLabel,W/2,H*.42);ctx.fillText(stageTitleLabel,W/2,H*.42);ctx.font="15px Arial";ctx.fillStyle="rgba(220,240,255,.85)";const sub={title2:"Tomahawk shortage...",title3:"Oil crisis — Mission critical",title4:"Carrier support inbound",title5:"Shahed swarm incoming"}[stagePhase]||"";ctx.fillText(sub,W/2,H*.42+36);ctx.restore();}
+function drawStage3Mission(){if(stagePhase!=="stage3")return;ctx.save();ctx.textAlign="center";ctx.fillStyle="rgba(255,230,150,.9)";ctx.strokeStyle="rgba(0,0,0,.4)";ctx.lineWidth=3;const s3p=s3AllyPass+s3EnemyPass;const lines=["MISSION OBJECTIVES (Stage 3)","• Let 27+ ships pass (ally + enemy) this stage","• Sink 8+ enemy ships (total)","Progress: Pass "+s3p+"/27   Sink "+statEnemySunk+"/8"];let y=H*0.28;lines.forEach((ln,i)=>{ctx.font=i===0?"bold 14px Arial":"12px Arial";ctx.strokeText(ln,W/2,y);ctx.fillText(ln,W/2,y);y+=20;});ctx.restore();}
+function drawEndScreen(){if(stagePhase!=="end")return;ctx.save();ctx.fillStyle="rgba(0,8,16,.7)";ctx.fillRect(0,0,W,H);ctx.textAlign="center";ctx.font="bold 56px Arial";ctx.lineWidth=8;if(endResult==="SUCCESS"){ctx.fillStyle="#7dffb2";ctx.strokeStyle="rgba(0,40,20,.6)";ctx.strokeText("SUCCESS",W/2,H*.38);ctx.fillText("SUCCESS",W/2,H*.38);}else{ctx.fillStyle="#ff6a6a";ctx.strokeStyle="rgba(40,0,0,.6)";ctx.strokeText("FAIL",W/2,H*.38);ctx.fillText("FAIL",W/2,H*.38);}ctx.font="14px Arial";ctx.fillStyle="rgba(230,245,255,.9)";ctx.fillText("Stage3 Passed: "+(s3AllyPass+s3EnemyPass)+" / 27",W/2,H*.38+42);ctx.fillText("Enemy Sunk (total): "+statEnemySunk+" / 8",W/2,H*.38+64);ctx.fillText("SCORE  "+score,W/2,H*.38+92);ctx.restore();}
+function drawStage4IntroText(){
+  if(stagePhase!=="stage4intro") return;
+  ctx.save();
+  ctx.textAlign="center";
+  if(stage4IntroPhase==="trump"){
+    ctx.fillStyle="rgba(0,10,20,.55)";
+    ctx.fillRect(W*0.1, H*0.22, W*0.8, 90);
+    ctx.strokeStyle="rgba(255,220,120,.5)"; ctx.lineWidth=2;
+    ctx.strokeRect(W*0.1, H*0.22, W*0.8, 90);
+    ctx.fillStyle="#ffe8a0";
+    ctx.font="bold 15px Arial";
+    ctx.fillText("TRUMP:", W/2, H*0.22+28);
+    ctx.font="13px Arial";
+    ctx.fillStyle="#fff";
+    ctx.fillText("A tremendously big and powerful ship is coming in!", W/2, H*0.22+52);
+    ctx.fillText("Thank you for your interest in this great fact!", W/2, H*0.22+72);
+  }else if(stage4IntroPhase==="rise"){
+    ctx.fillStyle="rgba(255,230,150,.9)";
+    ctx.font="bold 18px Arial";
+    ctx.fillText("CVN ARRIVING...", W/2, H*0.30);
+  }else if(stage4IntroPhase==="secdef"){
+    ctx.fillStyle="rgba(200,220,255,.85)";
+    ctx.font="bold 16px Arial";
+    ctx.fillText("STAGE 4 — Carrier Deployment", W/2, H*0.28);
+  }
+  ctx.restore();
+}
+function drawGameTitle(){
+  if(stagePhase!=="intro")return;
+  const t=introTimer,fadeOut=t>6?Math.max(0,1-(t-6)/.8):1;
+  ctx.save();
+  if(t<0.9){ctx.fillStyle="#000";ctx.fillRect(0,0,W,H);ctx.restore();return;}
+  ctx.fillStyle="#000";ctx.fillRect(0,0,W,H);
+  const titleIn=Math.min(1,(t-0.9)/0.8);
+  ctx.globalAlpha=titleIn*fadeOut;ctx.textAlign="center";
+  ctx.font="900 "+Math.max(30,Math.min(62,W/12))+"px Arial";ctx.lineWidth=8;ctx.strokeStyle="rgba(0,0,0,.85)";ctx.fillStyle="#f2e8c9";
+  ctx.strokeText("DAZED AND CONFUSED",W/2,H*.34);ctx.fillText("DAZED AND CONFUSED",W/2,H*.34);
+  ctx.font="900 "+Math.max(22,Math.min(45,W/16))+"px Arial";ctx.fillStyle="#e2b85e";ctx.strokeText("TRUMP IN HORMUZ",W/2,H*.43);ctx.fillText("TRUMP IN HORMUZ",W/2,H*.43);
+  ctx.font="bold "+Math.max(12,Math.min(19,W/42))+"px Arial";ctx.fillStyle="#d8e5ea";ctx.fillText("A Totally Serious Naval Defense Game",W/2,H*.50);
+  if(t>2){ctx.globalAlpha=Math.min(1,(t-2)/.7)*fadeOut;ctx.font="bold 13px Arial";ctx.fillStyle="#ffe08a";ctx.fillText("TRUMP ENTERING THE STRAIT...",W/2,H*.64);}
+  ctx.restore();
+}
+
+function drawHUD(){ctx.textAlign="left";ctx.font="12px Arial";ctx.fillStyle="rgba(220,245,250,.72)";ctx.fillText("RIGHT ↑ Far   LEFT ↓ Near",8,H*.18);ctx.fillText("SPACE = Skip Stage",8,H*.82);ctx.textAlign="right";ctx.fillStyle="rgba(255,255,255,.8)";ctx.font="bold 14px Arial";ctx.fillText("SCORE "+score,W-10,34);ctx.textAlign="left";ctx.font="11px Arial";ctx.fillStyle="rgba(200,230,255,.7)";ctx.fillText("Ally "+allySpawned+"/"+MAX_ALLY+"  Enemy "+enemySpawned+"/"+MAX_ENEMY,10,34);const stageNames={wave1:"WAVE 1",stage2:"STAGE 2",stage3:"STAGE 3",stage4:"STAGE 4 — F-35",stage5:"STAGE 5 — Shahed"};if(stageNames[stagePhase]){ctx.fillStyle="rgba(255,160,120,.85)";ctx.fillText(stageNames[stagePhase],10,50);}if(stagePhase==="stage5"){ctx.fillStyle="rgba(255,200,120,.8)";ctx.font="10px Arial";ctx.fillText("Trucks: "+trucks.length+"  Drones: "+drones.length,10,66);}if(messageTimer>0){ctx.textAlign="center";ctx.fillStyle="#ffe8a3";ctx.font="bold 15px Arial";ctx.fillText(message,W/2,H*.62);}}
+
+let last=performance.now();
+function loop(now){let dt=Math.min((now-last)/1000,.05);last=now;trumpTime+=dt;
+if(stagePhase==="intro"){introTimer+=dt;if(introTimer>=6.8){stagePhase="wave1";introTimer=0;spawnTimer=0;message="WAVE 1";messageTimer=1.2;}}if(secDefPresent)secDefTime+=dt;if(treasPresent)treasTime+=dt;if(admiralPresent)admiralTime+=dt;if(AMMO.current<AMMO.max){AMMO.current=Math.min(AMMO.max,AMMO.current+AMMO.rechargeRate*dt);updateAmmoUI();}if(secDefPresent){if(AMMO.current<AMMO.cost){secDefBubbleVisible=true;secDefBubbleTimer=2.8;}else{secDefBubbleTimer-=dt;if(secDefBubbleTimer<=0)secDefBubbleVisible=false;}}if(treasPresent){treasBubbleTimer-=dt;if(treasBubbleTimer<=0){treasBubbleVisible=!treasBubbleVisible;treasBubbleTimer=treasBubbleVisible?3.2:1.5;}}if(admiralPresent&&admiralBubble){admiralBubbleTimer-=dt;if(admiralBubbleTimer<=0&&!toiletClogged)admiralBubble=false;}if(["wave1","stage2","stage3","stage4","stage5"].includes(stagePhase)){spawnTimer-=dt;if(spawnTimer<=0){spawnShip();spawnTimer=2.4;}}
+if(stagePhase==="stage4intro"){
+  stage4IntroTimer-=dt;
+  if(stage4IntroPhase==="secdef"){
+    secDefBubbleVisible=true;
+    if(stage4IntroTimer<=0){
+      stage4IntroPhase="trump";
+      stage4IntroTimer=4.5;
+      playFanfare();
+    }
+  }else if(stage4IntroPhase==="trump"){
+    if(stage4IntroTimer<=0){
+      stage4IntroPhase="rise";
+      stage4IntroTimer=3.5;
+      carrierPresent=true;
+      carrierY=H+60;
+      carrierRiseProgress=0;
+      playFanfare();
+    }
+  }else if(stage4IntroPhase==="rise"){
+    carrierRiseProgress=Math.min(1, carrierRiseProgress+dt/3.2);
+    carrierY = H+60 - (H+60 - H*0.42)*carrierRiseProgress;
+    if(carrierRiseProgress>=1){
+      carrierY=H*0.42;
+      beginStage4Combat();
+    }
+  }
+}if(stagePhase==="stage4"||stagePhase==="stage5"){updatePoopSystem(dt);f35SpawnTimer-=dt;if(f35SpawnTimer<=0){spawnF35();f35SpawnTimer=7+Math.random()*5;}updateF35s(dt);}if(stagePhase==="stage5"){truckSpawnTimer-=dt;if(truckSpawnTimer<=0){spawnTruck();truckSpawnTimer=6+Math.random()*4;}updateTrucks(dt);updateDrones(dt);}if(stagePhase==="wave1"&&waveDone()){stagePhase="title2";stageTitleLabel="STAGE 2";stageTitleTimer=2.5;}else if(stagePhase==="title2"){stageTitleTimer-=dt;if(stageTitleTimer<=0)enterStage2();}else if(stagePhase==="stage2"&&waveDone()){stagePhase="title3";stageTitleLabel="STAGE 3";stageTitleTimer=2.5;}else if(stagePhase==="title3"){stageTitleTimer-=dt;if(stageTitleTimer<=0)enterStage3();}else if(stagePhase==="stage3"&&waveDone()){stagePhase="title4";stageTitleLabel="STAGE 4";stageTitleTimer=2.5;}else if(stagePhase==="title4"){stageTitleTimer-=dt;if(stageTitleTimer<=0)enterStage4();}else if(stagePhase==="stage4"&&waveDone()){stagePhase="title5";stageTitleLabel="STAGE 5";stageTitleTimer=2.5;}else if(stagePhase==="title5"){stageTitleTimer-=dt;if(stageTitleTimer<=0)enterStage5();}else if(stagePhase==="stage5"&&waveDone())evaluateEnd();ships.forEach(s=>updateShip(s,dt));ships=ships.filter(s=>s.alive);towerState.player.cooldown=Math.max(0,towerState.player.cooldown-dt);updateProjectiles(dt);explosions.forEach(e=>e.life-=dt);explosions=explosions.filter(e=>e.life>0);if(trumpMoodTimer>0){trumpMoodTimer-=dt;if(trumpMoodTimer<=0)trumpMood="neutral";}if(messageTimer>0)messageTimer-=dt;if(attackFlash>0)attackFlash-=dt;drawBackground();drawPort();drawCarrier();drawAttackEffect();drawTowerStatus(px(PATH.playerTowerX),py(PATH.playerTowerY),towerState.player,"PLAYER");ships.forEach(drawShip);trucks.forEach(drawTruck);f35s.forEach(drawF35);drones.forEach(drawDrone);drawProjectiles();explosions.forEach(e=>{const t=1-e.life/e.maxLife,r=20+t*90,a=Math.max(0,1-t);ctx.save();ctx.globalAlpha=a*.85;const g=ctx.createRadialGradient(e.x,e.y,0,e.x,e.y,r);g.addColorStop(0,"#fff6c8");g.addColorStop(.35,"#ff9a3c");g.addColorStop(.7,"#ff4a2a");g.addColorStop(1,"rgba(255,80,40,0)");ctx.fillStyle=g;ctx.beginPath();ctx.arc(e.x,e.y,r,0,Math.PI*2);ctx.fill();ctx.restore();});drawTreasury();drawTrumpDot();drawSecDef();drawAdmiral();drawStage4IntroText();drawStage3Mission();drawStageTitle();drawEndScreen();drawHUD();drawGameTitle();requestAnimationFrame(loop);}
+resize();for(let i=0;i<2;i++){spawnShip();ships[i].y=py(1.05-i*.22);}updateStatsUI();updateAmmoUI();updatePoopUI();requestAnimationFrame(loop);
+</script>
+</body>
+</html>
