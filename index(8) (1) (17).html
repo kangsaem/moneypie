@@ -96,25 +96,21 @@ let statEnemySunk=0, statAllySunk=0, statAllyPass=0, statEnemyPass=0;
 let allySpawned=0, enemySpawned=0;
 const MAX_ALLY=30, MAX_ENEMY=30;
 
+// Stage3-only pass counters for success condition
+let s3AllyPass=0, s3EnemyPass=0, s3EnemySunk=0;
+
 const AMMO={max:6, current:6, rechargeRate:0.35, cost:1, stage2:false};
 const SHELL_DATA={nearFlightTime:1.15, farFlightTime:2.0};
 let towerState={player:{hp:100,maxHp:100,cooldown:0}};
 let landRocks=[];
 let trumpMood="neutral", trumpMoodTimer=0, trumpTime=0;
 
-/*
-  Flow:
-  wave1 (30+30) → title STAGE 2 → stage2 (30+30 + SecDef, fast ammo)
-  → title STAGE 3 → stage3 (30+30 + Treasury Sec) → end → SUCCESS/FAIL
-  Success: (allyPass + enemyPass) >= 40 AND enemySunk >= 12
-*/
-let stagePhase="wave1"; // wave1 | title2 | stage2 | title3 | stage3 | end
+let stagePhase="wave1";
 let stageTitleTimer=0;
 let stageTitleLabel="";
 let secDefPresent=false, secDefTime=0, secDefBubbleTimer=0, secDefBubbleVisible=false;
 let treasPresent=false, treasTime=0, treasBubbleTimer=0, treasBubbleVisible=false;
-let endResult=null; // "SUCCESS" | "FAIL"
-let endTimer=0;
+let endResult=null;
 
 function updateStatsUI(){
  document.getElementById("statEnemySunk").textContent=statEnemySunk;
@@ -223,6 +219,7 @@ function sinkShip(s, fromChain){
  s.alive=false; s.hitFlash=.55;
  if(s.faction==="enemy"){
    score+=s.kind==="lng"?200:100; statEnemySunk++;
+   if(stagePhase==="stage3") s3EnemySunk++;
    message=s.kind==="lng"?"Enemy LNG BOOM! +200":"Enemy Sunk! +100";
    setTrumpMood("happy");
  }else{
@@ -285,7 +282,13 @@ function updateShip(s,dt){
    if(moveToward(s,px(PATH.leftX)+s.edgeOffset,py(PATH.peninBot),dt)) s.state="MOVING_LEFT_EXIT"; break;
   case"MOVING_LEFT_EXIT":
    if(moveToward(s,px(PATH.leftX)+s.edgeOffset,py(PATH.bottomY),dt)){
-     if(s.faction==="ally")statAllyPass++; else statEnemyPass++;
+     if(s.faction==="ally"){
+       statAllyPass++;
+       if(stagePhase==="stage3") s3AllyPass++;
+     }else{
+       statEnemyPass++;
+       if(stagePhase==="stage3") s3EnemyPass++;
+     }
      updateStatsUI(); s.alive=false;
    }
    break;
@@ -343,7 +346,10 @@ function enterStage2(){
  stagePhase="stage2";
  secDefPresent=true; secDefTime=0;
  secDefBubbleVisible=true; secDefBubbleTimer=3.5;
- AMMO.stage2=true; AMMO.rechargeRate=0.12; AMMO.cost=1.4;
+ AMMO.stage2=true;
+ // Milder drain than before (was 0.12 / 1.4)
+ AMMO.rechargeRate=0.22;
+ AMMO.cost=1.15;
  resetWaveSpawns();
 }
 
@@ -351,16 +357,17 @@ function enterStage3(){
  stagePhase="stage3";
  treasPresent=true; treasTime=0;
  treasBubbleVisible=true; treasBubbleTimer=3.5;
- // keep hard ammo
- AMMO.rechargeRate=0.10; AMMO.cost=1.5;
+ AMMO.rechargeRate=0.18;
+ AMMO.cost=1.25;
+ s3AllyPass=0; s3EnemyPass=0; s3EnemySunk=0;
  resetWaveSpawns();
 }
 
 function evaluateEnd(){
  stagePhase="end";
- endTimer=0;
- const totalPassed=statAllyPass+statEnemyPass;
- const okPass=totalPassed>=40;
+ // Success: Stage3-only passed >= 40 AND total enemy sunk >= 12
+ const s3Passed=s3AllyPass+s3EnemyPass;
+ const okPass=s3Passed>=40;
  const okSink=statEnemySunk>=12;
  endResult=(okPass && okSink) ? "SUCCESS" : "FAIL";
 }
@@ -679,7 +686,6 @@ function drawSecDef(){
  }
 }
 
-// Treasury Secretary — left side of Trump
 function drawTreasury(){
  if(!treasPresent) return;
  const S=Math.max(3.5, Math.min(6.5, W/130));
@@ -693,12 +699,10 @@ function drawTreasury(){
  };
  const skin="#f0d0b0", hair="#c8a060", suit="#2a1a10", shirt="#f0e8d8";
  const tie="#8a2020", eye="#1a1a1a";
- // hair (lighter/gray-blond)
  for(let x=-5;x<=5;x++) pxl(x,-9,hair);
  for(let x=-6;x<=6;x++) pxl(x,-8,hair);
  for(let y=-7;y<=2;y++) for(let x=-5;x<=5;x++) pxl(x,y,skin);
  pxl(-3,-2,eye); pxl(-2,-2,eye); pxl(2,-2,eye); pxl(3,-2,eye);
- // worried
  pxl(-2,1,"#8a5050"); pxl(-1,2,"#8a5050"); pxl(0,1,"#8a5050"); pxl(1,2,"#8a5050"); pxl(2,1,"#8a5050");
  if(Math.sin(treasTime*8)>0){ pxl(6,-5,"#8ec8e8"); }
  for(let y=3;y<=10;y++) for(let x=-6;x<=6;x++) pxl(x,y,suit);
@@ -710,7 +714,6 @@ function drawTreasury(){
  ctx.font="bold 9px Arial"; ctx.textAlign="center";
  ctx.fillStyle="rgba(230,210,180,.9)";
  ctx.fillText("TREASURY", cx, cy+12*S+8);
-
  if(treasBubbleVisible){
    const bx=cx, by=cy-14*S;
    const text="Sir... we have no oil.";
@@ -760,20 +763,20 @@ function drawEndScreen(){
  if(endResult==="SUCCESS"){
    ctx.fillStyle="#7dffb2";
    ctx.strokeStyle="rgba(0,40,20,.6)";
-   ctx.strokeText("SUCCESS", W/2, H*.40);
-   ctx.fillText("SUCCESS", W/2, H*.40);
+   ctx.strokeText("SUCCESS", W/2, H*.38);
+   ctx.fillText("SUCCESS", W/2, H*.38);
  }else{
    ctx.fillStyle="#ff6a6a";
    ctx.strokeStyle="rgba(40,0,0,.6)";
-   ctx.strokeText("FAIL", W/2, H*.40);
-   ctx.fillText("FAIL", W/2, H*.40);
+   ctx.strokeText("FAIL", W/2, H*.38);
+   ctx.fillText("FAIL", W/2, H*.38);
  }
  ctx.font="14px Arial";
  ctx.fillStyle="rgba(230,245,255,.9)";
- const totalPassed=statAllyPass+statEnemyPass;
- ctx.fillText("Passed ships: "+totalPassed+" / 40 needed", W/2, H*.40+40);
- ctx.fillText("Enemy sunk: "+statEnemySunk+" / 12 needed", W/2, H*.40+62);
- ctx.fillText("SCORE  "+score, W/2, H*.40+90);
+ const s3Passed=s3AllyPass+s3EnemyPass;
+ ctx.fillText("Stage3 Passed: "+s3Passed+" / 40 needed", W/2, H*.38+42);
+ ctx.fillText("Enemy Sunk (total): "+statEnemySunk+" / 12 needed", W/2, H*.38+64);
+ ctx.fillText("SCORE  "+score, W/2, H*.38+92);
  ctx.restore();
 }
 
@@ -788,17 +791,16 @@ function drawHUD(){
  ctx.textAlign="left"; ctx.font="11px Arial";
  ctx.fillStyle="rgba(200,230,255,.7)";
  ctx.fillText("Ally "+allySpawned+"/"+MAX_ALLY+"  Enemy "+enemySpawned+"/"+MAX_ENEMY,10,34);
- if(AMMO.stage2 || stagePhase==="stage3"){
+ if(stagePhase==="stage2"){
   ctx.fillStyle="rgba(255,160,120,.85)";
-  const lab=stagePhase==="stage3"?"STAGE 3 — Oil crisis":"STAGE 2 — Rapid shell drain";
-  ctx.fillText(lab,10,50);
- }
- // mission goals always visible in later stages
- if(stagePhase==="stage2"||stagePhase==="stage3"||stagePhase==="end"){
+  ctx.fillText("STAGE 2 — Shell pressure",10,50);
+ }else if(stagePhase==="stage3"||stagePhase==="end"){
+  ctx.fillStyle="rgba(255,160,120,.85)";
+  ctx.fillText("STAGE 3 — Oil crisis",10,50);
   ctx.font="10px Arial";
-  ctx.fillStyle="rgba(200,230,255,.65)";
-  const tp=statAllyPass+statEnemyPass;
-  ctx.fillText("Pass "+tp+"/40   Sink "+statEnemySunk+"/12",10,66);
+  ctx.fillStyle="rgba(200,230,255,.7)";
+  const s3p=s3AllyPass+s3EnemyPass;
+  ctx.fillText("S3 Pass "+s3p+"/40   Sink "+statEnemySunk+"/12",10,66);
  }
  if(messageTimer>0){
   ctx.textAlign="center"; ctx.fillStyle="#ffe8a3"; ctx.font="bold 15px Arial";
@@ -834,13 +836,11 @@ function loop(now){
    }
  }
 
- // spawning during combat phases
  if(stagePhase==="wave1" || stagePhase==="stage2" || stagePhase==="stage3"){
    spawnTimer-=dt;
    if(spawnTimer<=0){ spawnShip(); spawnTimer=2.4; }
  }
 
- // transitions
  if(stagePhase==="wave1" && waveDone()){
    stagePhase="title2"; stageTitleLabel="STAGE 2"; stageTitleTimer=2.5;
  }else if(stagePhase==="title2"){
@@ -864,7 +864,6 @@ function loop(now){
  if(trumpMoodTimer>0){trumpMoodTimer-=dt;if(trumpMoodTimer<=0)trumpMood="neutral";}
  if(messageTimer>0)messageTimer-=dt;
  if(attackFlash>0)attackFlash-=dt;
- if(stagePhase==="end") endTimer+=dt;
 
  drawBackground(); drawPort(); drawAttackEffect();
  drawTowerStatus(px(PATH.playerTowerX),py(PATH.playerTowerY),towerState.player,"PLAYER");
